@@ -3798,6 +3798,9 @@
     <ClInclude Include="..\..\Source\Dsp\Moteur.h">
       <Filter>LuxRev-1\Source\Dsp</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\Source\Dsp\Preampli.h">
+      <Filter>LuxRev-1\Source\Dsp</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\Source\Generated\Programmes.h">
       <Filter>LuxRev-1\Source\Generated</Filter>
     </ClInclude>

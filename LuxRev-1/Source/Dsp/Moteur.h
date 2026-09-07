@@ -28,6 +28,7 @@
 #pragma once
 
 #include "Conception.h"
+#include "Preampli.h"
 #include "../Generated/Programmes.h"
 
 namespace luxrev
@@ -77,6 +78,8 @@ struct Reglages
     float tiltDb        = 0.0f;
     float tiltPivotHz   = 700.0f;
     float stereo        = 1.0f;
+    float preampliDb    = 0.0f;      // pot d'entree R52
+    bool  preampliActif = true;
 };
 
 /** Charge les reglages d'un programme accorde. */
@@ -176,10 +179,28 @@ public:
         Sans ce partage, on corrige au hasard. */
     bool contournerTank = false;
 
+    /** Etage d'enveloppe de Gate et Inverse.
+
+        ⚠️ Ces deux programmes ne sont pas des reverbes courtes : ce sont des
+        tanks normaux SUIVIS d'un profil impose. Leur R2 de decroissance (0,59 et
+        0,76 contre 0,99+ ailleurs) le prouve — la forme dans le temps ne suit pas
+        une exponentielle.
+
+        Le prototype applique le profil a la reponse impulsionnelle, une fois,
+        apres coup. En temps reel il n'y a pas d'« apres coup » : le profil doit
+        etre RELANCE a chaque attaque du signal d'entree. C'est d'ailleurs ce
+        qu'on attend d'une porte — sinon elle se fermerait une fois pour toutes
+        au premier son de la session.
+    */
     /** Recueille le signal a la frequence INTERNE, juste apres decimation.
         Crochet de verification : il coupe la chaine en deux, ce qui permet de
         dire si un ecart vient de la descente vers 31,25 kHz ou de la remontee. */
     std::vector<float>* sondeInterne = nullptr;
+
+    /** Coupe l'etage d'enveloppe. Crochet de verification : il sert a mesurer ce
+        que le tank fait SEUL, ce dont on a besoin pour calculer le profil
+        correctif de Gate et Inverse. */
+    bool porteActive = true;
 
     //--------------------------------------------------------------------------
     /** Alloue tout, pour le pire cas. Jamais appele depuis le fil audio. */
@@ -192,6 +213,10 @@ public:
         anneauIn.assign ((size_t) kTailleAnneau, 0.0f);
         anneauL.assign  ((size_t) kTailleAnneau, 0.0f);
         anneauR.assign  ((size_t) kTailleAnneau, 0.0f);
+
+        // le profil est echantillonne a kPasEnveloppeMs : on avance d'autant
+        // de points par echantillon de l'hote
+        pasPorte = 1000.0 / (kPasEnveloppeMs * fsHote);
 
         preSos = emphase (fsHote, false);
         deSosL = deSosR = emphase (fsHote, true);
@@ -251,6 +276,9 @@ public:
         std::fill (ffBuf.begin(), ffBuf.end(), 0.0); ffI = 0;
         for (int k = 0; k < kNFdn; ++k) { etats[k] = sorties[k] = eBass[k] = lfoEtat[k] = 0.0; }
         eTreble = fbEtat = sL = sR = hL = hR = 0.0;
+        rapide = lent = 0.0f;
+        depuisDeclenchement = 1 << 20;
+        posPorte = (double) nPorte;
     }
 
     //--------------------------------------------------------------------------
@@ -332,6 +360,16 @@ public:
         murL.poser (tmp, n);
         murR.poser (tmp, n);
 
+        preampli.poserGain (reg.preampliDb);
+        preampli.activer (reg.preampliActif);
+
+        if (programme != nullptr && nouveauProgramme)
+        {
+            porte  = programme->enveloppePorte;
+            nPorte = programme->nEnveloppePorte;
+            posPorte = (double) nPorte;         // au repos : profil epuise
+        }
+
         tiltActif = std::abs (reg.tiltDb) > 0.01f;
         if (tiltActif)
         {
@@ -372,7 +410,8 @@ public:
         // --- 1. etage d'entree a la frequence de l'hote
         for (int i = 0; i < n; ++i)
         {
-            float x = entree[i];
+            float x = preampli.traiter (entree[i]);
+            detecter (x);                       // declenchement de l'enveloppe
             if (reg.emphase) x = preSos.traiter (x);
             anneauIn[(size_t) (ecritsIn & kMasque)] = aa.traiter (x);
             ++ecritsIn;
@@ -417,6 +456,17 @@ public:
             L = voicingL.traiter (L);
             R = voicingR.traiter (R);
             if (reg.emphase) { L = deSosL.traiter (L); R = deSosR.traiter (R); }
+
+            // ⚠️ L'enveloppe vient EN DERNIER, comme dans le prototype, qui
+            // l'applique au rendu fini. La poser plus tot la ferait passer dans
+            // les filtres de reconstruction, qui etaleraient son flanc de
+            // fermeture — et sur une porte, c'est le flanc qui fait le son.
+            if (porte != nullptr && porteActive)
+            {
+                const float g = lirePorte();
+                L *= g; R *= g;
+                posPorte += pasPorte;
+            }
 
             sortieL[i] = L;
             sortieR[i] = R;
@@ -616,6 +666,58 @@ private:
     double kTreble = 1.0, kCross = 0.0, lpOut = 1.0, kHp = 0.0;
     double profondeur = 0.0, aLfo = 0.0, gainLfo = 1.0;
     Ech eTreble = 0.0, fbEtat = 0.0, sL = 0.0, sR = 0.0, hL = 0.0, hR = 0.0;
+
+    //--------------------------------------------------------------------------
+    /** Detection d'attaque : deux suiveurs d'enveloppe, un rapide, un lent.
+
+        On declenche quand le rapide passe nettement au-dessus du lent, ce qui
+        signe une attaque et non un niveau eleve tenu. Un simple seuil absolu
+        rouvrirait la porte en continu sur une nappe forte, et jamais sur une
+        caisse claire jouee doucement.
+
+        Le verrou de retour empeche une meme attaque de declencher plusieurs fois
+        pendant sa montee.
+    */
+    inline void detecter (float x) noexcept
+    {
+        if (porte == nullptr) return;
+        const float a = std::abs (x);
+        rapide += (a > rapide ? kAttaqueRapide : kRelacheRapide) * (a - rapide);
+        lent   += (a > lent   ? kAttaqueLente  : kRelacheLente)  * (a - lent);
+
+        if (depuisDeclenchement < kVerrou) { ++depuisDeclenchement; return; }
+        if (rapide > kSeuilPlancher && rapide > lent * kFacteurAttaque)
+        {
+            posPorte = 0.0;
+            depuisDeclenchement = 0;
+        }
+    }
+
+    inline float lirePorte() const noexcept
+    {
+        if (posPorte >= (double) (nPorte - 1)) return 0.0f;   // apres le profil : ferme
+        const int k = (int) posPorte;
+        const float f = (float) (posPorte - (double) k);
+        return porte[k] + (porte[k + 1] - porte[k]) * f;
+    }
+
+    // Constantes du declencheur. Elles ne viennent d'aucune mesure du LXP-1 —
+    // la machine n'a pas de declencheur, son enveloppe part de l'impulsion — donc
+    // elles sont posees au jugement et signalees comme telles.
+    static constexpr float kAttaqueRapide  = 0.30f;
+    static constexpr float kRelacheRapide  = 0.005f;
+    static constexpr float kAttaqueLente   = 0.004f;
+    static constexpr float kRelacheLente   = 0.0008f;
+    static constexpr float kFacteurAttaque = 2.5f;
+    static constexpr float kSeuilPlancher  = 1.0e-4f;
+    static constexpr int   kVerrou         = 480;   // ~10 ms a 48 kHz
+
+    Preampli preampli;
+    const float* porte = nullptr;
+    int nPorte = 0;
+    double posPorte = 0.0, pasPorte = 0.0;
+    float rapide = 0.0f, lent = 0.0f;
+    int depuisDeclenchement = 1 << 20;
 
     Bruit bruit { 20260907u };
 };

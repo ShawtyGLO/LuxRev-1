@@ -21,6 +21,7 @@ RACINE = ICI.parent.parent                      # « LuxRev-1 VST »
 ACCORD = RACINE / "_proto" / "accord" / "programmes.json"
 MESURES = RACINE / "_proto" / "mesures"
 VOICING = RACINE / "_proto" / "accord" / "voicing_portage.json"
+ENV_PORTAGE = RACINE / "_proto" / "accord" / "enveloppe_portage.json"
 SORTIE = ICI.parent / "Source" / "Generated" / "Programmes.h"
 
 # Ordre d'affichage a la facade. Les cles sont celles de l'accordeur.
@@ -104,6 +105,17 @@ N_ENV = 100
 N_SP = 12
 SP_BORNES = (250, 16000)
 
+# ⚠️ Gate et Inverse ne sont pas des reverbes courtes : ce sont des tanks normaux
+# suivis d'un ETAGE D'ENVELOPPE. Leur R2 de decroissance (0,59 et 0,76 contre
+# 0,99+ ailleurs) le prouve — la forme dans le temps ne suit pas une
+# exponentielle, elle est imposee.
+#
+# Le profil sort du releve complet a 5 ms, pas de l'enveloppe sous-echantillonnee
+# de l'affichage : sur une porte, c'est le FLANC de fermeture qui fait le son, et
+# 30 ms de resolution le rendraient mou.
+ENVELOPPE = {"lxp1_room_gate", "lxp1_room_inverse"}
+PAS_ENV_MS = 5.0
+
 
 def lire_mesures():
     """Extrait l'enveloppe et la reponse mesurees, pour l'affichage de la facade.
@@ -123,7 +135,23 @@ def lire_mesures():
         sp = [v for f, v in d["spectre_db"] if SP_BORNES[0] <= f <= SP_BORNES[1]][:N_SP]
         while len(sp) < N_SP:
             sp.append(sp[-1] if sp else 0.0)
-        out[nom] = {"env": env100, "sp": sp,
+        porte = None
+        if cle in ENVELOPPE:
+            # ⚠️ Le profil est une CORRECTION, pas la cible brute.
+            #
+            # `moteur.enveloppe_gate` multiplie le rendu par l'enveloppe absolue
+            # relevee sur l'IR, alors que le tank decroit deja seul : la forme est
+            # appliquee deux fois. Sur `gate` a 600 ms, la machine est a -52,4 dB,
+            # le tank seul a -32,6, et leur produit a -83,7.
+            #
+            # `enveloppe_portage.py` calcule donc profil = machine / tank, mesure
+            # sur le moteur du plugin. Meme philosophie que le FIR de voicing :
+            # on inverse un residu plutot que de deviner la forme qui le produit.
+            if ENV_PORTAGE.exists():
+                porte = json.loads(ENV_PORTAGE.read_text(encoding="utf-8"))[cle]
+            else:
+                porte = [round(10.0 ** (v / 20.0), 6) for _, v in env]
+        out[nom] = {"env": env100, "sp": sp, "porte": porte,
                     "t60": d["t60_global_s"], "mel": d["temps_melange_ms"]}
     return out
 
@@ -187,6 +215,9 @@ def main():
     t.append(f"inline constexpr float kDureeEnveloppeS = 3.0f;")
     t.append(f"inline constexpr int kTailleSpectre = {N_SP};")
     t.append("")
+    t.append("// Pas du profil d'enveloppe de Gate et Inverse, en millisecondes.")
+    t.append(f"inline constexpr float kPasEnveloppeMs = {PAS_ENV_MS}f;")
+    t.append("")
     t.append("struct Programme")
     t.append("{")
     t.append("    const char* nom;")
@@ -201,6 +232,11 @@ def main():
     t.append("    const float* spectreDb;          // kTailleSpectre points, releve sur l'IR")
     t.append("    float t60MesureS;                // ce que la machine fait vraiment")
     t.append("    float melangeMs;                 // temps de melange mesure")
+    # ⚠️ Ces deux champs viennent APRES melangeMs, dans le meme ordre que
+    # l'initialisation plus bas. Les declarer ailleurs compile en silence sur
+    # certaines dispositions et donne des pointeurs decales.
+    t.append("    const float* enveloppePorte;     // profil de Gate/Inverse, nullptr sinon")
+    t.append("    int nEnveloppePorte;             // nombre de points, pas de kPasEnveloppeMs")
     t.append("};")
     t.append("")
 
@@ -221,6 +257,11 @@ def main():
         t.append(f"inline constexpr float kSpectre{i}[kTailleSpectre] = {{")
         t.append(flottants(m["sp"], 8))
         t.append("};")
+        if m["porte"]:
+            t.append(f"// {nom} : profil d'enveloppe releve, applique APRES le tank.")
+            t.append(f"inline constexpr float kPorte{i}[{len(m['porte'])}] = {{")
+            t.append(flottants(m["porte"], 8))
+            t.append("};")
         t.append("")
 
     t.append("inline constexpr Programme kProgrammes[kNombreProgrammes] = {")
@@ -232,7 +273,11 @@ def main():
         t.append(f"      {litteral(vmin)}, {litteral(vmax)}, {litteral(pre)},")
         m = mesures[nom]
         t.append(f"      kFir{i}, kCompColor{i}, kCompLp{i}, kEnv{i}, kSpectre{i},")
-        t.append(f"      {litteral(m['t60'])}, {litteral(m['mel'])} }},")
+        t.append(f"      {litteral(m['t60'])}, {litteral(m['mel'])},")
+        if m["porte"]:
+            t.append(f"      kPorte{i}, {len(m['porte'])} }},")
+        else:
+            t.append("      nullptr, 0 },")
     t.append("};")
     t.append("")
     t.append("} // namespace luxrev")

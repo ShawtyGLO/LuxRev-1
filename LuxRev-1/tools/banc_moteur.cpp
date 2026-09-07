@@ -95,6 +95,8 @@ int main (int argc, char** argv)
     // retire (N-1)/2 echantillons au debut, donc une impulsion posee a l'indice 0
     // y perd la moitie avant de la reponse de ses deux FIR.
     const int decalage = (argc > 8) ? std::atoi (argv[8]) : 0;
+    // 0 = etage d'enveloppe coupe (pour mesurer le tank seul).
+    const bool porte = (argc > 9) ? std::atoi (argv[9]) != 0 : true;
 
     const int n = (int) (kFs * duree);
     std::vector<float> x ((size_t) n, 0.0f), g ((size_t) n), d ((size_t) n);
@@ -113,6 +115,7 @@ int main (int argc, char** argv)
         r.modProfondeur *= mod;
         r.bits = bits;
         m.contournerTank = (chaine != 0);
+        m.porteActive = porte;
         std::vector<float> sonde;
         if (chaine == 2) { sonde.reserve ((size_t) n); m.sondeInterne = &sonde; }
         m.appliquer (r, &p);
@@ -159,7 +162,8 @@ int main (int argc, char** argv)
             ecrireWav (dossier + "/INTERNE_" + nom + ".wav", sonde, sonde, kFsInterne);
         else
             ecrireWav (dossier + (chaine ? "/CHAINE_" : (signal ? "/BRUIT_" : "/CPP_"))
-                       + nom + (decalage ? ("_d" + std::to_string (decalage)) : "") + ".wav", g, d, kFs);
+                       + nom + (porte ? "" : "_nu")
+                       + (decalage ? ("_d" + std::to_string (decalage)) : "") + ".wav", g, d, kFs);
         std::printf ("  %-10s crete %.4f  latence %3d ech.  CPU %5.2f %% d'un coeur\n",
                      p.nom, crete, m.latenceEchantillons(), charge);
     }

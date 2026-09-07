@@ -3030,6 +3030,7 @@
     <ClInclude Include="..\..\Source\Dsp\Elements.h"/>
     <ClInclude Include="..\..\Source\Dsp\Conception.h"/>
     <ClInclude Include="..\..\Source\Dsp\Moteur.h"/>
+    <ClInclude Include="..\..\Source\Dsp\Preampli.h"/>
     <ClInclude Include="..\..\Source\Generated\Programmes.h"/>
     <ClInclude Include="C:\Users\llg53\Desktop\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.h"/>
     <ClInclude Include="C:\Users\llg53\Desktop\JUCE\modules\juce_audio_basics\buffers\juce_AudioChannelSet.h"/>

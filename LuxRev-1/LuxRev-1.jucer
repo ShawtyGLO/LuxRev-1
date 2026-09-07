@@ -21,6 +21,7 @@
         <FILE id="srcD1" name="Elements.h" compile="0" resource="0" file="Source/Dsp/Elements.h"/>
         <FILE id="srcD2" name="Conception.h" compile="0" resource="0" file="Source/Dsp/Conception.h"/>
         <FILE id="srcD3" name="Moteur.h" compile="0" resource="0" file="Source/Dsp/Moteur.h"/>
+        <FILE id="srcD4" name="Preampli.h" compile="0" resource="0" file="Source/Dsp/Preampli.h"/>
       </GROUP>
       <GROUP id="{D1000000-0000-0000-0000-000000000003}" name="Generated">
         <FILE id="srcG1" name="Programmes.h" compile="0" resource="0"
