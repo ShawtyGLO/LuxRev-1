@@ -1,0 +1,15 @@
+{
+  "_source": "Manuel utilisateur LXP-1, Lexicon/Harman, Program table: Reverbs (p. 2-10).",
+  "_note": "Valeurs NOMINALES des 16 programmes d'usine. Les IR de tone3000 n'ont PAS ete capturees a ces valeurs : DECAY et DELAY sont des boutons physiques sur le LXP-1, il n'existe pas de position par defaut memorisee. Voir CONCEPTION.md.",
+  "_colonnes": "rt60_nominal_s, rt60_min_s, rt60_max_s, predelai_nominal_ms, predelai_max_ms",
+  "lxp1_room_small1":  [0.8, 0.08, 2.4, 16, 246],
+  "lxp1_room_small2":  [1.2, 0.12, 2.5, 16, 246],
+  "lxp1_room_medium1": [1.2, 0.30, 4.0, 33, 246],
+  "lxp1_room_medium2": [1.6, 0.40, 8.0, 33, 246],
+  "lxp1_room_large1":  [2.2, 0.45, 6.5, 33, 246],
+  "lxp1_room_large2":  [2.4, 0.55, 8.5, 33, 246],
+  "lxp1_hall_d":       [1.6, 0.60, 8.0, 33, 246],
+  "lxp1_hall_b":       [2.6, 0.65, 9.0, 33, 246],
+  "lxp1_room_plate_d": [1.8, 0.40, 6.0, 33, 246],
+  "lxp1_room_plate_b": [1.7, 0.25, 6.5,  0, 246]
+}

@@ -1,0 +1,19 @@
+# ═══ NON NEGOCIABLE — licence T3K ═══
+# Les IR et les modeles NAM sont sous licence T3K : usage dans un logiciel et publication
+# des sorties autorises, REDISTRIBUTION DES FICHIERS INTERDITE. Ils ne doivent jamais
+# entrer dans un depot, public ou prive.
+Impulse Responce LXP-1/
+*.nam
+
+# Rendus et signaux : volumineux et reproductibles par les scripts.
+_proto/signaux/
+_proto/rendus/
+_proto/rendus_moteur/
+_proto/mesures/planches/
+*.wav
+
+# Outillage et cache
+_proto/__pycache__/
+__pycache__/
+*.pyc
+_outils/pluginval/
