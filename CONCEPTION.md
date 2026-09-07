@@ -225,6 +225,67 @@ philosophie : ce n'est pas un compromis, c'est fidèle.
 
 ---
 
+
+## 6 bis. Les commandes qui vont au-delà de la machine (décidé 2026-09-07)
+
+Le clone est validé à l'oreille. Ce qui justifie le plugin au-delà du clone, c'est que
+**la machine était bornée et nous ne le sommes pas** : 65 536 échantillons de RAM et un
+Lexichip de 1987, avec des programmes gravés en ROM.
+
+Deux axes retenus, tous deux construits sur le même principe — **le point de référence est
+une position centrale, pas une extrémité**.
+
+### RÉSONANCE — 50 % au centre
+
+50 % = le LXP-1 mesuré. Vers le bas, plus crémeux. Vers le haut, plus « métallique
+synthétique ».
+
+Leviers, du plus au moins efficace : longueur des lignes, force de la matrice de
+Householder, rugosité au-dessus de 5 kHz, profondeur de la modulation aléatoire.
+
+⚠️ **Contrainte de construction** : trois de ces leviers déplacent aussi le T60 et le
+timbre — exactement ce qui vient d'être validé. La macro doit être **compensée** : quand
+elle raccourcit les lignes, elle rattrape le gain de boucle pour que la durée ne bouge pas.
+Sinon tourner Résonance changera la longueur de la réverbe, ce qui n'est pas l'intention.
+
+### STÉRÉO — 100 % au centre
+
+100 % = l'image du LXP-1 telle que mesurée.
+
+**En dessous** : on ramène les sorties vers le mono. Sans piège.
+
+**Au-dessus** : ⛔ **pas par opposition de phase.** La corrélation L/R mesurée est déjà de
+0,00 à 0,02 — on est au plancher de la décorrélation. Pousser en corrélation négative
+élargit au casque et **s'effondre en mono**, ce qui est disqualifiant pour une réverbe de
+bus.
+
+✅ La bonne voie : le FDN a huit lignes. Élargir se fait en donnant à L et R des
+**sous-ensembles de lignes disjoints**, avec des longueurs plus contrastées. La différence
+entre canaux augmente sans jamais créer d'anti-phase. C'est un avantage propre à la
+nouvelle topologie — le figure-8 à deux bras ne pouvait pas le faire.
+
+### ⛔ ÉPOQUE — écarté, et pas seulement reporté
+
+Un axe qui aurait fait varier ensemble la fréquence interne, le mur anti-image, la
+quantification et la pré-accentuation — de 1987 à « sans limites ».
+
+**Écarté sur argument produit (utilisateur, 2026-09-07)** : le but de cette réverbe est
+d'être **typée**. Un plugin vintage dont le second bouton dit « rends-la moins vintage » se
+saborde : à zéro, LuxRev devient une réverbe algorithmique propre de plus, sur un terrain
+où elle n'a aucun avantage. La contrainte de 1987 n'est pas un défaut désactivable, c'est
+le produit.
+
+Le mécanisme **reste dans le moteur** et ne bouge pas — ce n'est pas une commande, c'est
+l'identité. Si l'axe revient un jour, ce sera de la machine vers **un peu plus ouvert**,
+jamais jusqu'à l'absence de limites.
+
+### Onglet Advanced (v2)
+
+Façade fidèle et simple, plus un onglet développé façon Arturia LX-24, avec une
+**représentation graphique** de la réverbe et de ses paramètres. Le vocabulaire est prêt
+(Size, Diffusion, Definition, Treble Decay, Bass Multiply, Crossover, High/Low Cut, Shape,
+Spread, Chorusing) — voir la note `LuxRev-1 - Vocabulaire Lexicon` du vault. **Hors v1.**
+
 ## 7. Étage d'entrée — à reprendre
 
 Trois captures NAM (`Input Gain 2 / 5 / 7`) dans
