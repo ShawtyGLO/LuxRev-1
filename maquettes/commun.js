@@ -4,9 +4,6 @@
    Partagé pour que les variantes ne diffèrent QUE par la mise en page :
    si un bouton se comporte différemment d'une maquette à l'autre, on
    compare deux comportements au lieu de comparer deux formes.
-
-   Chaque variante fournit son propre HTML et son propre CSS, puis
-   appelle monter() avec les conteneurs qu'elle a créés.
    ------------------------------------------------------------------ */
 
 const PROGRAMMES = ["Small 1","Small 2","Medium 1","Medium 2","Large 1","Large 2",
@@ -97,96 +94,142 @@ function fabrique(c, montrer){
 
 /* ---------------- la courbe, VIVANTE ----------------
 
-   Demande de l'utilisateur (2026-09-07) : « decay, pré-delay et tilt devraient
-   être représentés graphiquement et non pas uniquement par une jauge qui se
-   remplit — voir la courbe centrale réagir serait intuitif et plus parlant ».
+   Base : l'enveloppe RÉELLEMENT MESURÉE du programme (mesures.js, généré depuis
+   _proto/mesures/). Les commandes la transforment.
 
-   Le TRACÉ DE FOND est l'enveloppe RÉELLEMENT MESURÉE du programme
-   (mesures.js, généré depuis _proto/mesures/). Il ne bouge jamais : c'est la
-   machine, la référence.
+   ⚠️ Correction 2026-09-07 : le fond ne reste plus figé pendant que le trait
+   bouge. « Le fond et les tracés devraient bouger, car sinon ça ressemble à un
+   bug » — c'est exact : un remplissage immobile sous un trait mobile ne se lit
+   pas comme « voici la référence », ça se lit comme un défaut d'affichage.
+   Fond et trait ne font plus qu'un.
 
-   Le TRACÉ VIF est ce même relevé transformé par les commandes. Trois de ces
-   transformations sont EXACTES — ce sont les opérations que le moteur fait
-   vraiment :
-     - Decay      : dilatation du temps après le pic, rapport T60 demandé / mesuré
-     - Pre-Delay  : décalage, à la milliseconde
-     - Mix        : décalage vertical en dB
-   ⚠️ La quatrième ne l'est PAS. COLOR n'a pas d'effet mesurable sur
-   l'enveloppe — il agit sur la rugosité, donc sur le GRAIN. L'ondulation de la
-   queue est une REPRÉSENTATION de cette rugosité, pas une courbe relevée. Elle
-   est là parce que sans elle COLOR serait la seule commande muette à l'écran,
-   pas parce qu'on l'a mesurée.                                                */
+   ⚠️ La fenêtre de temps S'ADAPTE : « il faut que le graphique de la réverbe
+   puisse être vu toujours en entier ». À Decay 9 s, une fenêtre fixe de 3 s
+   coupait la queue. L'échelle change donc, et les graduations en secondes
+   suivent — elles restent, elles sont utiles.
 
-const T_MAX = 3000;   // la fenêtre de l'écran, en ms
+   Trois transformations sont EXACTES, ce sont les opérations du moteur :
+     Decay     dilatation du temps après le pic (T60 demandé / T60 mesuré)
+     Pre-Delay décalage, à la milliseconde
+     Mix       décalage en dB
+   La quatrième ne l'est pas — voir remplissage(), plus bas.                    */
+
+const T_MESURE = 3000;                                   // portée du relevé, en ms
+const ECHELLES = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12]; // fenêtres, en s
+
+function fenetre(m, etat){
+  const besoin = etat ? (etat.delay/1000 + etat.decay*1.25) : 3;
+  for(let i = 0; i < ECHELLES.length; i++) if(ECHELLES[i] >= besoin) return ECHELLES[i]*1000;
+  return 12000;
+}
+
+/* lecture du relevé à une date quelconque, avec prolongement de la pente au-delà
+   des 3 s mesurées — sans quoi un Decay long donnerait une queue tronquée net */
+function releve(m, ms){
+  const n = m.env.length, pas = T_MESURE/(n-1);
+  if(ms <= 0) return m.env[0];
+  const x = ms/pas;
+  if(x <= n-1){
+    const k = Math.floor(x);
+    return m.env[k] + (m.env[Math.min(k+1, n-1)] - m.env[k]) * (x - k);
+  }
+  const pente = (m.env[n-1] - m.env[n-11]) / (10*pas);    // dB/ms
+  return m.env[n-1] + pente * (ms - T_MESURE);
+}
+
+/* ---- COLOR : le remplissage, et non plus une ondulation obscure ----
+   « Voir la courbe bouger sans savoir dans quel sens on est en la regardant
+   semble assez obscur. » Exact — l'ondulation disait qu'il se passait quelque
+   chose, pas quoi. Le remplissage, lui, se lit d'un coup d'œil :
+
+     crémeux    -> plein et dense
+     référence  -> un peu moins
+     métallique -> strié, des raies verticales là où ça résonne
+
+   ⚠️ Ce n'est PAS un relevé. COLOR n'a pas d'effet mesurable sur l'enveloppe,
+   il agit sur la rugosité. Les raies REPRÉSENTENT ce grain ; leur position
+   n'est pas mesurée. Je le signale plutôt que de le laisser passer pour une
+   mesure — mais l'axe, lui, est juste : plus on va vers le métallique, plus la
+   queue est striée de résonances.                                             */
+function remplissage(pts, L, H, grain, yCourbe){
+  const opacite = 0.30 - 0.13 * grain;        // crémeux dense, métallique aéré
+  let h = '<polygon class="remplissage" style="opacity:' + opacite.toFixed(2) + '" points="'
+        + pts + " " + L + "," + H + " 0," + H + '"/>';
+  if(grain > 0.02){
+    const n = Math.round(14 + grain*30);
+    let raies = "";
+    for(let i = 1; i < n; i++){
+      /* écart pseudo-aléatoire mais STABLE : des raies qui sautent à chaque
+         redessin donneraient exactement l'impression de bug qu'on corrige */
+      const x = (i + 0.35*Math.sin(i*2.4)) / n * L;
+      const o = (0.25 + 0.55*Math.abs(Math.sin(i*1.7))) * grain;
+      raies += '<line x1="'+x.toFixed(1)+'" y1="'+yCourbe(x).toFixed(1)+'" x2="'+x.toFixed(1)
+             + '" y2="'+H+'" style="opacity:'+o.toFixed(2)+'"/>';
+    }
+    h += '<g class="raies">' + raies + '</g>';
+  }
+  return h;
+}
 
 function courbe(svg, nom, etat){
   const m = MESURES[nom];
   if(!m) return;
-  const L = 300, H = 96, PLANCHER = -60;
+  const L = 300, H = 96, PLANCHER = -60, N = 200;
   const y = d => H - Math.max(0, Math.min(1, (d - PLANCHER)/(0 - PLANCHER))) * H;
-  const env = m.env, n = env.length, pasT = T_MAX/(n-1);
 
-  function trace(e){ return e.map((d,i)=>(i/(n-1)*L).toFixed(1)+","+y(d).toFixed(1)).join(" "); }
+  const T    = fenetre(m, etat);
+  const pas  = T_MESURE/(m.env.length-1);
+  const tPic = m.env.indexOf(Math.max.apply(null, m.env)) * pas;
+  const r    = etat ? Math.max(0.05, etat.decay / m.t60) : 1;
+  const dec  = etat ? etat.delay : 0;
+  const mix  = etat ? 20*Math.log10(Math.max(etat.mix/100, 1e-3)) : 0;
+  const grain= etat ? (etat.color - 50)/50 : 0;
 
-  /* --- le relevé, intact --- */
-  let h = '<polyline class="trace-fond" points="' + trace(env) + " " + L + "," + H + " 0," + H + '"/>';
+  const val = new Array(N);
+  for(let i = 0; i < N; i++){
+    const t = i/(N-1)*T, ts = t - dec;
+    if(ts < 0){ val[i] = PLANCHER; continue; }
+    const src = ts <= tPic ? ts : tPic + (ts - tPic)/r;
+    val[i] = Math.max(PLANCHER, releve(m, src) + mix);
+  }
+  const pts = val.map((d,i)=>(i/(N-1)*L).toFixed(1)+","+y(d).toFixed(1)).join(" ");
+  const yCourbe = x => y(val[Math.max(0, Math.min(N-1, Math.round(x/L*(N-1))))]);
 
-  if(etat){
-    const pic = env.indexOf(Math.max.apply(null, env));
-    const r   = Math.max(0.05, etat.decay / m.t60);      // dilatation du temps
-    const dec = etat.delay / pasT;                        // décalage, en points
-    const mix = 20 * Math.log10(Math.max(etat.mix/100, 1e-3));
-    const grain = (etat.color - 50)/50;                   // -1 crémeux .. +1 métallique
-
-    const vif = [];
-    for(let i = 0; i < n; i++){
-      const j = i - dec;                                  // Pre-Delay
-      if(j < 0){ vif.push(PLANCHER); continue; }
-      let src = j <= pic ? j : pic + (j - pic)/r;         // Decay
-      let d;
-      if(src >= n-1){ d = PLANCHER; }
-      else{
-        const k = Math.floor(src), f = src - k;
-        d = env[k] + (env[k+1] - env[k]) * f;
-      }
-      /* le grain : ondulation dans la queue seulement, jamais sur l'attaque */
-      if(grain !== 0 && j > pic){
-        const poids = Math.min(1, (j - pic) / (n * 0.25));
-        d += grain * 2.2 * poids * Math.sin(j * 1.9) * Math.sin(j * 0.47);
-      }
-      vif.push(Math.max(PLANCHER, d + mix));
-    }
-    h += '<polyline class="trace" points="' + trace(vif) + '"/>';
-  } else {
-    h += '<polyline class="trace" points="' + trace(env) + '"/>';
+  /* graduations en secondes — gardées, l'utilisateur les juge utiles */
+  const secPas = T <= 1500 ? 0.25 : (T <= 4000 ? 0.5 : (T <= 8000 ? 1 : 2));
+  let g = "";
+  for(let s = secPas; s < T/1000 - 1e-6; s += secPas){
+    const x = s/(T/1000)*L;
+    const lib = (s % 1 === 0) ? String(s) : s.toFixed(2).replace(/0+$/,"").replace(/\.$/,"");
+    g += '<line class="seconde" x1="'+x.toFixed(1)+'" y1="0" x2="'+x.toFixed(1)+'" y2="'+H+'"/>'
+       + '<text class="graduation" x="'+(x+2).toFixed(1)+'" y="'+(H-3)+'">'+lib+'</text>';
   }
 
-  /* le temps de mélange mesuré : l'instant où la queue devient un bruit.
-     C'est lui qui sépare une salle d'une plaque à l'oreille. */
-  const xm = Math.min(L, m.mel / T_MAX * L);
-  h += '<line class="melange" x1="'+xm+'" y1="0" x2="'+xm+'" y2="'+H+'"/>'
-     + '<text class="graduation" x="'+(xm+4)+'" y="9">mélange ' + Math.round(m.mel) + ' ms</text>'
-     + '<text class="graduation" x="2" y="9">0</text>'
-     + '<text class="graduation" x="'+(L-22)+'" y="9">3 s</text>';
+  /* le temps de mélange mesuré : l'instant où la queue devient un bruit —
+     c'est lui qui sépare une salle d'une plaque à l'oreille */
+  const xm = m.mel/T*L;
+  let rep = "";
+  if(xm < L - 4){
+    rep = '<line class="melange" x1="'+xm.toFixed(1)+'" y1="0" x2="'+xm.toFixed(1)+'" y2="'+H+'"/>'
+        + '<text class="graduation" x="'+(xm+3).toFixed(1)+'" y="9">mélange '+Math.round(m.mel)+' ms</text>';
+  }
 
   svg.setAttribute("viewBox", "0 0 " + L + " " + H);
-  svg.innerHTML = h;
+  svg.innerHTML = g
+    + remplissage(pts, L, H, grain, yCourbe)
+    + '<polyline class="trace" points="' + pts + '"/>'
+    + rep
+    + '<text class="graduation" x="'+(L-26)+'" y="9">'+(T/1000)+' s</text>';
 }
 
-/* ---------------- la réponse, VIVANTE ----------------
-
-   L'utilisateur : « je ne comprends pas l'utilité de la réponse en fréquence,
-   si c'est du remplissage ce n'est pas instructif ». Il avait raison — elle
-   était muette. Elle a maintenant deux emplois, tous deux réels :
-
-   1. Elle AFFICHE TILT. C'est la seule commande dont l'effet est purement
-      spectral : la montrer sur une enveloppe temporelle n'aurait aucun sens,
-      la montrer ici en a un.
-   2. Elle PROUVE QUE COLOR NE TOUCHE PAS AU TIMBRE. C'est la promesse qu'on a
-      passé la journée à construire — les deux courbes de compensation existent
-      exactement pour ça. Tourner COLOR sans voir les barres bouger n'est pas
-      une absence d'information : c'est la vérification.                       */
-
+/* ---------------- la réponse en fréquence ----------------
+   Deux emplois réels, au lieu de remplir :
+   1. elle AFFICHE TILT — la seule commande purement spectrale, qui n'aurait
+      aucun sens sur une courbe temporelle ;
+   2. elle PROUVE QUE COLOR NE TOUCHE PAS AU TIMBRE. Les deux courbes de
+      compensation existent exactement pour ça : voir les barres ne pas bouger
+      quand on tourne COLOR n'est pas une absence d'information, c'est la
+      vérification.                                                            */
 function spectre(svg, nom, etat){
   const m = MESURES[nom];
   if(!m) return;
@@ -208,4 +251,38 @@ function spectre(svg, nom, etat){
      + '<text class="graduation" x="'+(L-32)+'" y="'+(H-2)+'">16 kHz</text>';
   svg.setAttribute("viewBox", "0 0 " + L + " " + H);
   svg.innerHTML = h;
+}
+
+/* ---------------- STÉRÉO : deux cercles ----------------
+   Idée de l'utilisateur (2026-09-07), et elle règle un problème que j'avais
+   déclaré sans solution honnête : « deux cercles qui s'éloignent horizontalement
+   quand c'est plus wide, se rejoignent pour n'en faire qu'un en mono, et en
+   position standard se rentrent un peu dedans à la manière du signe Gucci ».
+
+   C'est juste, et sans rien inventer : l'écartement EST la décorrélation.
+   Mono = un seul disque, corrélation +1. Référence = deux disques imbriqués,
+   corrélation 0. Large = ils se détachent, corrélation négative. La figure dit
+   ce que mesure la corrélation, sans chiffre à lire.                          */
+function cercles(svg, etat){
+  const L = 74, H = 30, R = 9.5;
+  const w = etat ? etat.stereo/100 : 1;
+  const e = R * 1.37 * w;                   // 0 en mono, 1,37 R à la référence
+  svg.setAttribute("viewBox", "0 0 " + L + " " + H);
+  svg.innerHTML =
+      '<circle class="oeil" cx="'+(L/2 - e).toFixed(1)+'" cy="'+(H/2)+'" r="'+R+'"/>'
+    + '<circle class="oeil" cx="'+(L/2 + e).toFixed(1)+'" cy="'+(H/2)+'" r="'+R+'"/>';
+}
+
+/* ---------------- HEADROOM ----------------
+   Idée de l'utilisateur : reprendre le bandeau de quatre témoins des unités
+   Lexicon, qui dit si on entre fort dans la réverbe. Il se lit avec l'étage
+   d'entrée (_proto/preampli.py) : la plage du manuel s'arrête à +15 dBV, et
+   c'est là que le quatrième témoin s'allume.                                  */
+const SEUILS = [-24, -12, -4, 0];           // dB sous le plafond d'entrée
+
+function headroom(hote, dbfs){
+  Array.prototype.forEach.call(hote.children, function(b, i){
+    b.classList.toggle("on",    dbfs >= SEUILS[i]);
+    b.classList.toggle("chaud", i === SEUILS.length-1 && dbfs >= SEUILS[i]);
+  });
 }

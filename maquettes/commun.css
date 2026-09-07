@@ -202,3 +202,49 @@ body{
   border-left:2px solid #34313c; padding-left:14px;
 }
 .note b{color:#a9a190; font-weight:600}
+
+/* ---------------- courbe : remplissage, raies, graduations ---------------- */
+.remplissage{fill:var(--lueur)}
+.raies line{stroke:var(--lueur); stroke-width:1.1}
+.seconde{stroke:color-mix(in srgb, var(--lueur) 12%, transparent); stroke-width:1}
+
+/* ---------------- STÉRÉO : les deux cercles ---------------- */
+.cercles{width:74px; height:30px; display:block}
+.cercles .oeil{
+  fill:color-mix(in srgb, var(--lueur) 16%, transparent);
+  stroke:var(--lueur); stroke-width:1.2;
+  transition:cx .18s cubic-bezier(.22,.8,.3,1);
+}
+
+/* ---------------- HEADROOM ----------------
+   Quatre barres empilées, comme sur les unités Lexicon : on lit d'un coup d'œil
+   si on entre fort dans la réverbe. La quatrième est le plafond d'entrée du
+   manuel (+15 dBV) — au-delà, l'étage d'entrée écrête. */
+.headroom{display:flex; flex-direction:column-reverse; gap:3px; justify-content:flex-start}
+.headroom i{
+  display:block; width:14px; height:9px; border-radius:1px;
+  background:color-mix(in srgb, var(--lueur) 11%, transparent);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--lueur) 16%, transparent);
+  transition:background .09s linear, box-shadow .09s linear;
+}
+.headroom i.on{
+  background:color-mix(in srgb, var(--lueur) 78%, transparent);
+  box-shadow:0 0 6px color-mix(in srgb, var(--lueur) 55%, transparent);
+}
+.headroom i.chaud{background:#e5623c; box-shadow:0 0 7px rgba(229,98,60,.7)}
+.etiq-vert{
+  writing-mode:vertical-rl; transform:rotate(180deg);
+  font-size:7.5px; letter-spacing:.24em; text-transform:uppercase;
+  color:var(--lueur-faible); align-self:center;
+}
+
+/* ---------------- ON / OFF ----------------
+   La diode et le titre forment un interrupteur invisible. À l'arrêt, SEULS la
+   diode et l'écran se grisent : le panneau garde son aspect, comme une machine
+   éteinte dont la face avant est toujours là. */
+.temoin, .marque{cursor:pointer; user-select:none}
+.panneau.off .temoin{
+  background:var(--serigraphie-2); box-shadow:inset 0 -1px 1px rgba(0,0,0,.4);
+}
+.panneau.off .verre{filter:grayscale(1) brightness(.62); opacity:.72}
+.panneau.off .verre *{transition:none}

@@ -9,100 +9,78 @@
    Le MRC existe, il est signé Lexicon, et il ne ressemble pas à une face
    avant — on quitte la barre horizontale sans quitter la marque.
 
-   Révision : l'écran ne montre plus des chiffres morts. La courbe RÉAGIT
-   aux commandes, et la réponse en fréquence sert enfin à quelque chose.
+   Révision : le sélecteur reste une GRILLE (tranché), l'écran gagne le
+   bandeau de headroom à gauche, la stéréo devient deux cercles, et la
+   diode + le titre forment un interrupteur invisible.
    ------------------------------------------------------------------ */
 .panneau{width:min(700px,100%)}
 .corps{display:flex; flex-direction:column; gap:11px; padding:16px 24px 20px; position:relative; z-index:2}
 
-.principal{padding:11px 14px 10px; display:flex; flex-direction:column; gap:8px}
+.principal{padding:11px 13px 10px; display:flex; gap:12px}
+.headroom-col{display:flex; gap:5px; flex:none; padding:2px 0 4px}
+.principal-droite{flex:1; display:flex; flex-direction:column; gap:8px; min-width:0}
 .principal-haut{display:flex; align-items:baseline; gap:12px}
 .principal-haut .titre-prog{margin-left:auto}
 .courbe{width:100%; height:96px; display:block}
 
-.mesures{display:flex; gap:16px; padding-top:8px; border-top:1px solid color-mix(in srgb, var(--lueur) 18%, transparent)}
+.mesures{display:flex; gap:14px; align-items:flex-end; padding-top:8px;
+         border-top:1px solid color-mix(in srgb, var(--lueur) 18%, transparent)}
 .mesures .stats{flex:none}
-.mesures .bloc-sp{flex:1; display:flex; flex-direction:column; gap:2px}
+.bloc{display:flex; flex-direction:column; gap:2px}
+.bloc-sp{flex:1; min-width:0}
 .legende{font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--lueur-faible)}
 
-/* ---- sélection : deux formes, à comparer ---- */
-/* ⚠️ La grille doit être posée sur du VERRE, pas sur le panneau. Elle emploie les
-   couleurs de l'écran (--lueur) : sur le panneau elles fonctionnent par accident en
-   peau sombre, où tout est sombre, et deviennent illisibles en peau claire. Le
-   défaut n'est apparu qu'en passant au rouge — c'est ce que sert une seconde peau. */
 .grille{grid-template-columns:repeat(4,1fr); padding:8px; gap:5px}
-.bandeau{
-  padding:7px 10px; display:flex; align-items:center; gap:10px; overflow:hidden;
-}
-.bandeau button{
-  font:inherit; font-size:15px; line-height:1; padding:3px 8px; border-radius:3px;
-  background:none; border:1px solid transparent; color:var(--lueur-faible); cursor:pointer;
-}
-.bandeau button:hover{color:var(--lueur); border-color:color-mix(in srgb, var(--lueur) 35%, transparent)}
-.fenetre{flex:1; overflow:hidden; position:relative; height:30px;
-         mask-image:linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)}
-.rail{position:absolute; top:0; left:50%; display:flex; align-items:center; height:30px;
-      transition:transform .28s cubic-bezier(.22,.8,.3,1)}
-.rail span{
-  width:150px; flex:none; text-align:center; font-size:12px; letter-spacing:.17em;
-  text-transform:uppercase; color:var(--lueur-faible); opacity:.42; cursor:pointer;
-  transition:opacity .28s, color .28s;
-}
-.rail span.sel{
-  color:var(--lueur); opacity:1; font-weight:700; font-size:13.5px;
-  text-shadow:0 0 11px color-mix(in srgb, var(--lueur) 55%, transparent);
-}
-.points{display:flex; gap:3px}
-.points i{width:3px; height:3px; border-radius:50%; background:color-mix(in srgb, var(--lueur) 22%, transparent)}
-.points i.sel{background:var(--lueur); box-shadow:0 0 5px var(--lueur)}
-
 .commandes{display:flex; gap:10px; justify-content:space-between; padding-top:2px}
 .pied{padding:8px 14px}
 </style>
 
 <div class="options">
   <button id="skin">Voir la version claire (rouge)</button>
-  <button id="mode">Sélection : bandeau défilant</button>
   <button id="reset">Réglages d'usine</button>
   <a href="01-rack-large.html">01</a>
   <a href="02-rack-comble.html">02</a>
 </div>
 
-<div class="panneau">
+<div class="panneau" id="panneau">
   <div class="entete">
-    <div class="temoin"></div>
-    <div class="marque">LuxRev<span>-1</span></div>
+    <div class="temoin" id="temoin" title="Marche / arrêt"></div>
+    <div class="marque" id="marque" title="Marche / arrêt">LuxRev<span>-1</span></div>
     <div class="sous-marque">Digital Reverberator</div>
   </div>
   <div class="bande"></div>
 
   <div class="corps">
     <div class="principal verre">
-      <div class="principal-haut">
-        <div class="rang" id="rang">Program 07</div>
-        <div class="titre-prog" id="nom-prog">Hall B</div>
+      <div class="headroom-col">
+        <div class="etiq-vert">Headroom</div>
+        <div class="headroom" id="headroom"><i></i><i></i><i></i><i></i></div>
       </div>
-      <svg class="courbe" id="courbe"></svg>
-      <div class="mesures">
-        <div class="stats">
-          <div>T60 mesuré <b id="s-t60">—</b></div>
-          <div>Mélange <b id="s-mel">—</b></div>
+
+      <div class="principal-droite">
+        <div class="principal-haut">
+          <div class="rang" id="rang">Program 07</div>
+          <div class="titre-prog" id="nom-prog">Hall B</div>
         </div>
-        <div class="bloc-sp">
-          <div class="legende">Réponse · le trait bouge avec TILT, pas avec COLOR</div>
-          <svg class="spectre" id="spectre"></svg>
+        <svg class="courbe" id="courbe"></svg>
+        <div class="mesures">
+          <div class="stats">
+            <div>T60 mesuré <b id="s-t60">—</b></div>
+            <div>Mélange <b id="s-mel">—</b></div>
+          </div>
+          <div class="bloc">
+            <div class="legende">Stéréo</div>
+            <svg class="cercles" id="cercles"></svg>
+          </div>
+          <div class="bloc bloc-sp">
+            <div class="legende">Réponse · bouge avec Tilt, pas avec Color</div>
+            <svg class="spectre" id="spectre"></svg>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="grille verre" id="grille"></div>
-
-    <div class="bandeau verre" id="bandeau" hidden>
-      <button id="prec" aria-label="Programme précédent">‹</button>
-      <div class="fenetre"><div class="rail" id="rail"></div></div>
-      <button id="suiv" aria-label="Programme suivant">›</button>
-      <div class="points" id="points"></div>
-    </div>
 
     <div class="commandes" id="commandes"></div>
 
@@ -117,35 +95,38 @@
 </div>
 
 <p class="note">
-  <b>Variante 03 — révisée.</b> La courbe centrale <b>réagit</b> : Decay dilate le temps,
-  Pre-Delay décale, Mix descend le niveau — ces trois-là sont les opérations exactes du
-  moteur, appliquées à l'enveloppe <i>réellement mesurée</i> (le tracé pâle en fond, qui ne
-  bouge jamais : c'est la machine). ⚠️ <b>COLOR fait exception</b> : il n'a pas d'effet
-  mesurable sur l'enveloppe, il agit sur la rugosité. L'ondulation de la queue est une
-  <i>représentation</i> de ce grain, pas un relevé — je le signale plutôt que de le laisser
-  passer pour une mesure.
+  <b>Variante 03 — deuxième révision.</b> ⚠️ <b>Le fond suit le trait</b> : un remplissage
+  immobile sous une courbe mobile ne se lisait pas comme « voici la référence », ça se lisait
+  comme un bug. Et <b>la fenêtre de temps s'adapte</b> — à Decay 9 s la queue sortait du
+  cadre ; l'échelle change, les graduations en secondes suivent.
   <br><br>
-  <b>La réponse en fréquence sert enfin à deux choses</b>, au lieu de remplir : elle affiche
-  <b>TILT</b> — la seule commande purement spectrale, qui n'aurait aucun sens sur une courbe
-  temporelle — et elle <b>prouve que COLOR ne touche pas au timbre</b>. Tourner COLOR sans
-  voir les barres bouger n'est pas une absence d'information : c'est la vérification de la
-  promesse que les deux courbes de compensation existent pour tenir.
+  <b>COLOR se lit maintenant dans le remplissage</b> : plein et dense côté crémeux, plus aéré
+  au centre, strié de raies verticales côté métallique — là où ça résonne. ⚠️ Ce n'est pas un
+  relevé : COLOR agit sur la rugosité, pas sur l'enveloppe. Les raies <i>représentent</i> ce
+  grain. L'axe est juste, la position des raies est dessinée.
   <br><br>
-  Le bouton <b>Sélection</b> bascule entre la grille et le <b>bandeau défilant</b> façon
-  Rev&nbsp;LX-24, qui accueillera les presets. ⚠️ <b>Stéréo reste sans graphique</b> : je n'ai
-  pas trouvé de façon honnête de représenter la décorrélation sur une enveloppe, et je préfère
-  un chiffre juste à un dessin inventé.
+  <b>Stéréo : deux cercles</b> — l'idée de l'utilisateur, et elle règle ce que j'avais déclaré
+  sans solution honnête. L'écartement <i>est</i> la décorrélation : un seul disque en mono
+  (corrélation +1), deux disques imbriqués à la référence (corrélation 0), détachés au-delà.
+  La figure dit ce que mesure la corrélation, sans chiffre à lire.
+  <br><br>
+  <b>Headroom</b> à gauche de l'écran, quatre barres comme sur les unités Lexicon. La
+  quatrième est le plafond d'entrée du manuel (<b>+15 dBV</b>) : au-delà, l'étage d'entrée
+  écrête. <b>La diode et le titre sont un interrupteur invisible</b> — à l'arrêt, seuls la
+  diode et l'écran se grisent, le panneau reste.
 </p>
 
 <script src="mesures.js"></script>
 <script src="commun.js"></script>
 <script>
 const etat = {decay:2.6, delay:33, color:50, stereo:100, tilt:0, mix:100};
+let allume = true;
 
 function redessine(){
   const nom = PROGRAMMES[iProg];
   courbe(document.getElementById("courbe"), nom, etat);
   spectre(document.getElementById("spectre"), nom, etat);
+  cercles(document.getElementById("cercles"), etat);
 }
 
 function montrer(c, v){
@@ -163,34 +144,20 @@ function montrer(c, v){
 const cmds = {}, zone = document.getElementById("commandes");
 COMMANDES.forEach(function(c){ const o = fabrique(c, montrer); cmds[c.id] = o; zone.appendChild(o.bloc); });
 
-/* ---- sélection du programme : grille, ou bandeau défilant ---- */
+/* ---- sélection du programme : grille (tranché 2026-09-07) ---- */
 let iProg = 6;
-const grille = document.getElementById("grille"), rail = document.getElementById("rail"),
-      points = document.getElementById("points");
-
+const grille = document.getElementById("grille");
 PROGRAMMES.forEach(function(nom, i){
   const b = document.createElement("button");
   b.textContent = nom; b.setAttribute("aria-pressed","false");
   b.addEventListener("click", function(){ iProg = i; posePro(); });
   grille.appendChild(b);
-
-  const s = document.createElement("span");
-  s.textContent = nom;
-  s.addEventListener("click", function(){ iProg = i; posePro(); });
-  rail.appendChild(s);
-
-  points.appendChild(document.createElement("i"));
 });
-
 function posePro(){
   const nom = PROGRAMMES[iProg], m = MESURES[nom];
   document.getElementById("nom-prog").textContent = nom;
   document.getElementById("rang").textContent = "Program " + String(iProg+1).padStart(2,"0");
   Array.prototype.forEach.call(grille.children, function(b,i){ b.setAttribute("aria-pressed", String(i===iProg)); });
-  Array.prototype.forEach.call(rail.children,   function(s,i){ s.classList.toggle("sel", i===iProg); });
-  Array.prototype.forEach.call(points.children, function(p,i){ p.classList.toggle("sel", i===iProg); });
-  rail.style.transform = "translateX(" + (-150*iProg - 75) + "px)";
-
   const u = USINE[nom];
   cmds.decay.set(u[0]); cmds.delay.set(u[1]);
   etat.decay = u[0]; etat.delay = u[1];
@@ -198,23 +165,27 @@ function posePro(){
   document.getElementById("s-t60").textContent = m.t60.toFixed(2) + " s";
   document.getElementById("s-mel").textContent = Math.round(m.mel) + " ms";
 }
-
-function saute(d){
-  iProg = (iProg + d + PROGRAMMES.length) % PROGRAMMES.length;
-  posePro();
-}
-document.getElementById("prec").addEventListener("click", function(){ saute(-1); });
-document.getElementById("suiv").addEventListener("click", function(){ saute(1); });
 posePro();
 
-document.getElementById("mode").addEventListener("click", function(e){
-  const bandeau = document.getElementById("bandeau");
-  const versBandeau = grille.hidden === false;
-  grille.hidden = versBandeau;
-  bandeau.hidden = !versBandeau;
-  e.target.textContent = versBandeau ? "Sélection : grille" : "Sélection : bandeau défilant";
-  if(versBandeau) rail.style.transform = "translateX(" + (-150*iProg - 75) + "px)";
-});
+/* ---- headroom : marche aléatoire lissée, juste pour que la maquette respire.
+        Dans le plugin, c'est le niveau réel à l'entrée de l'étage d'entrée. ---- */
+const barres = document.getElementById("headroom");
+let niveau = -18;
+setInterval(function(){
+  if(!allume){ headroom(barres, -99); return; }
+  const cible = -26 + Math.random()*26;
+  niveau += (cible - niveau) * 0.35;
+  headroom(barres, niveau);
+}, 90);
+
+/* ---- interrupteur invisible : la diode et le titre ---- */
+function bascule(){
+  allume = !allume;
+  document.getElementById("panneau").classList.toggle("off", !allume);
+}
+document.getElementById("temoin").addEventListener("click", bascule);
+document.getElementById("marque").addEventListener("click", bascule);
+
 document.getElementById("skin").addEventListener("click", function(e){
   const clair = document.documentElement.getAttribute("data-skin") === "clair";
   document.documentElement.setAttribute("data-skin", clair ? "" : "clair");
