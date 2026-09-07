@@ -71,6 +71,85 @@ def _emphase(fs, inverse=False):
     return _sig.tf2sos(b, a)
 
 
+def macro_color(params, color=0.5, compensation=None):
+    """Applique la macro COLOR a un jeu de parametres accorde.
+
+    Nommee COLOR (et non « Resonance ») parce que c'est la couleur de la reverbe qui
+    change, pas une resonance particuliere.
+
+    0,5 = le LXP-1 mesure, a l'identique. Vers 0 la reverbe devient plus cremeuse, vers 1
+    plus metallique et synthetique.
+
+    Les trois leviers vont dans le meme sens, ce qui est ce qui rend la macro lisible :
+
+      taille          lignes courtes = modes espaces = spectre accidente = metallique
+                      lignes longues = beaucoup de modes = spectre lisse = cremeux
+      mixage          peu de melange = echos distincts (« choppier » chez Lexicon)
+      mod_profondeur  la modulation aleatoire lisse ; on la retire pour durcir
+
+    ⚠️ COMPENSATION : changer `taille` change la longueur de boucle, donc le T60 si on n'y
+    prend pas garde. Le gain est recalcule par ligne a partir de `t60_s` et de la longueur
+    reelle (cf. `regler_t60`), donc la duree ne bouge pas — c'est ce qui rend le bouton
+    utilisable. Sans ca, tourner Resonance rallongerait ou raccourcirait la reverbe en meme
+    temps qu'il changerait son caractere, et personne ne voudrait s'en servir.
+    """
+    r = float(np.clip(color, 0.0, 1.0))
+    u = (r - 0.5) * 2.0                      # -1 = cremeux, 0 = reference, +1 = metallique
+    q = dict(params)
+    # La courbe de compensation voyage AVEC le jeu de parametres (elle est calibree par
+    # programme et rangee dans programmes.json), mais ce n'est pas un parametre du moteur :
+    # on la retire ici pour que `q` reste directement utilisable comme **kwargs.
+    if compensation is None:
+        compensation = q.get("compensation_color")
+    q.pop("compensation_color", None)
+
+    def vers(actuel, but, k):
+        """Interpole de la valeur accordee vers une extremite. PAS une multiplication.
+
+        La premiere version multipliait les parametres accordes. Elle ne marchait pas :
+        l'accordeur les a deja pousses aux bords (mixage a 0,05, taille contre son
+        plafond), donc il ne restait aucune marge et la course sortait non monotone.
+        Interpoler vers une cible garantit que chaque extremite est atteignable.
+        """
+        return float(actuel + (but - actuel) * k)
+
+    k = abs(u)
+    if u < 0:                                # --- vers le cremeux
+        q["taille"] = float(np.clip(vers(q.get("taille", 1.0),
+                                         q.get("taille", 1.0) * 2.6, k), 0.06, 3.2))
+        q["mixage"] = vers(q.get("mixage", 0.5), 1.0, k)
+        q["mod_profondeur"] = vers(q.get("mod_profondeur", 8.0), 26.0, k)
+        q["n_lignes"] = 8
+    else:                                    # --- vers le metallique
+        # ⚠️ Bornes serrees du cote metallique. Sans elles, `small2` tombait a 0,84 s de
+        # T60 pour 1,20 vise : avec 3 lignes tres courtes et presque aucun melange, la
+        # structure modale devient trop clairsemee pour soutenir la decroissance demandee,
+        # et la compensation lache. Un utilisateur entendrait la reverbe RACCOURCIR en
+        # tournant Resonance, ce qui n'est pas ce que le bouton annonce.
+        q["taille"] = float(np.clip(vers(q.get("taille", 1.0),
+                                         max(q.get("taille", 1.0) * 0.45, 0.30), k),
+                                    0.06, 3.2))
+        q["mixage"] = vers(q.get("mixage", 0.5), 0.06, k)
+        q["mod_profondeur"] = vers(q.get("mod_profondeur", 8.0), 0.0, k)
+        q["n_lignes"] = int(round(8 - k * 4.0))
+
+    # ⚠️ COMPENSATION DE DUREE, calibree par programme.
+    #
+    # Le T60 flechit reellement vers le metallique — confirme a l'ecoute, pas seulement
+    # mesure : « en mode metallique on perd un peu de longueur et de corps ». Avec moins de
+    # lignes et des lignes plus courtes, la structure modale ne soutient plus la meme
+    # decroissance, et la formule de gain par ligne ne suffit pas a le rattraper.
+    #
+    # `compensation` est une courbe de 5 points (COLOR = 0, 0,25, 0,5, 0,75, 1) mesuree une
+    # fois par `accorder.py`. Interpolee ici, elle coute une multiplication au moment de
+    # construire le moteur — rien en temps reel.
+    if compensation:
+        q["t60_s"] = float(q.get("t60_s", 1.0)
+                           * np.interp(r, np.linspace(0.0, 1.0, len(compensation)),
+                                       compensation))
+    return q
+
+
 def _bloqueur(x, n):
     """Bloqueur d'ordre zero : remontee 31,25 -> 48 kHz a la maniere du DAC.
 
@@ -348,6 +427,8 @@ class Moteur:
                            independamment de la longueur des lignes
       gain_prises       -> « DIFFUSION » du PCM 70 : densite des arrivees PRECOCES
       fenetre_diff_ms   -> etendue de cette periode initiale
+      n_lignes          -> nombre de lignes actives (2-8) ; DENSITE MODALE. Le levier de
+                           RESONANCE, parce qu'il garde sa marge quel que soit l'accordage
       mixage            -> « DEFINITION » : densite de la partie TARDIVE, decouplee
       pente_prises      -> dB entre premiere et derniere prise ; PENTE DE LA MONTEE
       etalement         -> etalement des injections, en fraction du plus court retard de
@@ -365,7 +446,7 @@ class Moteur:
                  mod_profondeur=8.0, mod_hz=0.7, bits=16, emphase=True,
                  n_diffuseurs=4, k_tank=0.7, k_tank2=0.5, correction_fir=None,
                  reflexions=None, niveau_er=0.0, retard_tank_ms=0.0, prise_tot=0.0,
-                 mixage=1.0, gain_prises=0.0, etalement=0.0,
+                 mixage=1.0, gain_prises=0.0, etalement=0.0, n_lignes=N_FDN,
                  forme=0.0, pente_prises=0.0, fenetre_diff_ms=60.0,
                  treble_hz=20000.0,
                  predelai_fb=0.0, ratio_bass=1.0, cross_bass_hz=400.0,
@@ -454,11 +535,16 @@ class Moteur:
         # plate en module : une interpolation lineaire dans une boucle recirculante coute
         # jusqu'a 12 dB d'aigu dans la queue, mesure sur `gate`).
         marge = int(self.mod_profondeur) + 2
+        # Nombre de lignes ACTIVES. C'est le levier le plus direct sur la densite modale :
+        # huit lignes donnent un spectre dense et lisse, trois donnent des modes espaces et
+        # un timbre sonnant. Contrairement a `taille` ou `mixage`, il garde toute sa marge
+        # quel que soit l'accordage — ceux-la sont deja pousses aux bords par l'accordeur.
+        self.n_lignes = int(np.clip(n_lignes, 2, N_FDN))
         self.lignes = [DelaiModule(_transpose(L, fs, taille), marge)
-                       for L in FDN_LONGUEURS]
+                       for L in FDN_LONGUEURS[:self.n_lignes]]
         # Signes alternes sur les prises de sortie : deux sorties decorrelees sans ajouter
         # de retard, la mesure donnant une correlation L/R nulle sur les 14 programmes.
-        self.signes = [1.0 if (k // 2) % 2 == 0 else -1.0 for k in range(N_FDN)]
+        self.signes = [1.0 if (k // 2) % 2 == 0 else -1.0 for k in range(self.n_lignes)]
         self.mixage = float(np.clip(mixage, 0.0, 1.0))
         # Dosage des prises intermediaires : 8 lignes x 3 prises = 24 arrivees par tour
         # au lieu de 8, sans un octet de memoire supplementaire.
@@ -504,8 +590,9 @@ class Moteur:
         # empiete sur la queue au lieu de la preceder.
         tau_min = min(l.nominal for l in self.lignes)
         etal = float(np.clip(etalement, 0.0, 0.95)) * tau_min
-        self.injections = [Delai(max(int(round(etal * k / max(N_FDN - 1, 1))), 1))
-                           for k in range(N_FDN)]
+        nl = self.n_lignes
+        self.injections = [Delai(max(int(round(etal * k / max(nl - 1, 1))), 1))
+                           for k in range(nl)]
         # --- SHAPE, au sens ou Lexicon l'emploie dans sa propre documentation
         # (manuel PCM Native Hall, p. 33) :
         #
@@ -520,10 +607,9 @@ class Moteur:
         # hall demande exactement l'inverse : l'energie doit arriver EN FIN de fenetre pour
         # que l'enveloppe monte au lieu de partir pleine. C'est ce qui bloquait `hall_b`.
         f = float(np.clip(forme, 0.0, 1.0))
-        n1 = max(N_FDN - 1, 1)
         self.b_inj = []
-        for k in range(N_FDN):
-            u = k / n1                       # 0 = injection precoce, 1 = tardive
+        for k in range(self.n_lignes):
+            u = k / max(self.n_lignes - 1, 1)                       # 0 = injection precoce, 1 = tardive
             # Poids triangulaire centre sur `forme` : a 0 tout entre au debut, a 1 tout
             # entre a la fin, entre les deux la repartition glisse continument.
             self.b_inj.append(float(max(1.0 - abs(u - f) * 2.2, 0.03)))
@@ -692,11 +778,12 @@ class Moteur:
         # Les deux sources disent la meme chose : c'est du hasard filtre, pas un LFO. Un
         # sinus fait respirer toute la queue au meme rythme et laisse entendre sa periode ;
         # un bruit lent desaccorde les modes sans jamais se repeter.
+        NL = self.n_lignes
         lfos = []
         rng = np.random.default_rng(20260907)
         tau = max(self.fs / max(self.mod_hz, 0.01) / 6.0, 2.0)
         a = float(np.exp(-1.0 / tau))
-        for k in range(N_FDN):
+        for k in range(NL):
             b = rng.standard_normal(n)
             y = _sig.lfilter([1.0 - a], [1.0, -a], b)
             ec = np.std(y)
@@ -714,14 +801,14 @@ class Moteur:
         k_tr, pdfb = self.k_treble, self.predelai_fb
         e_tr = fb_etat = 0.0
         k_cr, g_bass = self.k_cross, self.gain_bass
-        e_bass = [0.0] * N_FDN
+        e_bass = [0.0] * NL
         injections, b_inj = self.injections, self.b_inj
-        inj = [0.0] * N_FDN
+        inj = [0.0] * NL
         mix = self.mixage
         signes = self.signes
 
-        etats = [0.0] * N_FDN          # etats des filtres d'amortissement
-        sorties = [0.0] * N_FDN
+        etats = [0.0] * NL          # etats des filtres d'amortissement
+        sorties = [0.0] * NL
         sL = sR = hL = hR = 0.0
         k_hp = self._coef_lp(self.hp_sortie_hz) if self.hp_sortie_hz > 0 else 0.0
 
@@ -734,15 +821,15 @@ class Moteur:
                 v = ap.traiter(v)
             v = pre.pousser(v)
             fb_etat = v
-            for k in range(N_FDN):
+            for k in range(NL):
                 inj[k] = b_inj[k] * injections[k].pousser(v)
 
             # Melange : Householder attenue par `mix`.
             somme = 0.0
-            for k in range(N_FDN):
+            for k in range(NL):
                 somme += sorties[k]
-            f_mix = mix * 2.0 / N_FDN * somme
-            for k in range(N_FDN):
+            f_mix = mix * 2.0 / NL * somme
+            for k in range(NL):
                 e = (sorties[k] - f_mix) + inj[k]
                 d = lignes[k].traiter(e, lfos[k][i])
                 # h_i(Z) : passe-bas du 1er ordre a gain continu g_dc et pente propre.
@@ -753,7 +840,7 @@ class Moteur:
                 sorties[k] = etats[k] + g_bass[k] * e_bass[k]
 
             gch = drt = 0.0
-            for k in range(0, N_FDN, 2):
+            for k in range(0, NL - 1, 2):
                 gch += signes[k] * sorties[k]
                 drt += signes[k + 1] * sorties[k + 1]
             # Banc de retards direct : arrivees precoces uniquement.

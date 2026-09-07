@@ -81,7 +81,14 @@
       1.462e-05,
       0.00011631
     ],
-    "prise_tot": 0.0
+    "prise_tot": 0.0,
+    "compensation_color": [
+      0.9417,
+      1.0341,
+      1.0097,
+      1.0055,
+      1.1458
+    ]
   },
   "lxp1_hall_d": {
     "predelai_ms": 33.0,
@@ -165,7 +172,14 @@
       0.00017757,
       0.00041242
     ],
-    "prise_tot": 0.0
+    "prise_tot": 0.0,
+    "compensation_color": [
+      0.9534,
+      1.023,
+      0.9905,
+      1.059,
+      1.2163
+    ]
   },
   "lxp1_room_gate": {
     "predelai_ms": 0.1,
@@ -415,7 +429,14 @@
       -0.00020657,
       0.00010346
     ],
-    "prise_tot": 0.0
+    "prise_tot": 0.0,
+    "compensation_color": [
+      0.8838,
+      0.9784,
+      0.9476,
+      1.0037,
+      1.1825
+    ]
   },
   "lxp1_room_large2": {
     "predelai_ms": 33.0,
@@ -499,7 +520,14 @@
       -7.451e-05,
       0.00014563
     ],
-    "prise_tot": 0.0
+    "prise_tot": 0.0,
+    "compensation_color": [
+      0.9189,
+      1.0277,
+      0.9876,
+      1.0481,
+      1.2281
+    ]
   },
   "lxp1_room_medium1": {
     "predelai_ms": 33.0,
@@ -583,7 +611,14 @@
       -8.014e-05,
       0.00016947
     ],
-    "prise_tot": 0.0
+    "prise_tot": 0.0,
+    "compensation_color": [
+      0.978,
+      1.0471,
+      0.9949,
+      1.0493,
+      1.1948
+    ]
   },
   "lxp1_room_medium2": {
     "predelai_ms": 33.0,
@@ -667,7 +702,14 @@
       -0.00015343,
       0.00015299
     ],
-    "prise_tot": 0.5
+    "prise_tot": 0.5,
+    "compensation_color": [
+      0.9319,
+      0.9935,
+      0.9596,
+      0.9913,
+      1.1351
+    ]
   },
   "lxp1_room_plate_b": {
     "predelai_ms": 0.0,
@@ -751,7 +793,14 @@
       -0.00010542,
       0.00014534
     ],
-    "prise_tot": 0.5
+    "prise_tot": 0.5,
+    "compensation_color": [
+      0.9485,
+      1.0416,
+      0.9951,
+      1.0472,
+      1.2315
+    ]
   },
   "lxp1_room_plate_d": {
     "predelai_ms": 33.0,
@@ -835,7 +884,14 @@
       5.846e-05,
       0.00022213
     ],
-    "prise_tot": 0.5
+    "prise_tot": 0.5,
+    "compensation_color": [
+      0.8279,
+      0.8651,
+      0.9864,
+      1.1104,
+      1.0981
+    ]
   },
   "lxp1_room_small1": {
     "predelai_ms": 16.0,
@@ -919,7 +975,14 @@
       -0.00016295,
       0.00038526
     ],
-    "prise_tot": 0.5
+    "prise_tot": 0.5,
+    "compensation_color": [
+      0.8972,
+      0.981,
+      0.9924,
+      1.1965,
+      1.1408
+    ]
   },
   "lxp1_room_small2": {
     "predelai_ms": 16.0,
@@ -1003,6 +1066,13 @@
       -0.00025922,
       0.00021986
     ],
-    "prise_tot": 0.5
+    "prise_tot": 0.5,
+    "compensation_color": [
+      1.0192,
+      1.0162,
+      1.0049,
+      1.4456,
+      1.4024
+    ]
   }
 }

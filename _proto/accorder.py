@@ -37,7 +37,7 @@ from scipy.signal import firwin2 as signal_firwin2
 from analyse_ir import (bande, onset, schroeder_multi, spectre_multi, coin_hf,
                         densite_echos, rugosite_spectrale, temps_decroissance,
                         temps_melange)
-from moteur import FS, MUR_HZ_LXP, Moteur, enveloppe_gate
+from moteur import FS, MUR_HZ_LXP, Moteur, enveloppe_gate, macro_color
 
 MESURES = Path(__file__).parent / "mesures"
 # Valeurs NOMINALES des programmes, tirees de la Program table du manuel utilisateur
@@ -441,6 +441,24 @@ def accorder(cible, iterations=3, verbeux=True):
         if e is not None and abs(e) > 0.3:
             p["lp_sortie_hz"] = float(np.clip(p["lp_sortie_hz"] * 10.0 ** (-e / 9.0),
                                               1000.0, 22000.0))
+    # --- Calibration de la compensation de duree pour la macro COLOR.
+    # Cinq rendus, une seule fois : on mesure de combien le T60 flechit a chaque position
+    # et on stocke le facteur correctif. Le bouton devient alors neutre en duree.
+    if not impose:
+        comp = []
+        for r in np.linspace(0.0, 1.0, 5):
+            q = macro_color(p, r)
+            m = Moteur(fs=FS, **q)
+            L, R = m.reponse_impulsionnelle(duree)
+            j = onset(L)
+            t, _ = temps_decroissance(schroeder_multi([L[j:], R[j:]]), FS)
+            comp.append(float(np.clip(t60_cible / t, 0.5, 3.0))
+                        if t and not np.isnan(t) else 1.0)
+        p["compensation_color"] = [round(c, 4) for c in comp]
+        if verbeux:
+            print("    color    compensation " +
+                  " ".join(f"{c:.2f}" for c in comp))
+
     obt = rendre_et_mesurer()
     trace("final", obt)
     return p, obt, duree
