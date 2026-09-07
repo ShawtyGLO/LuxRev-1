@@ -1,0 +1,311 @@
+{
+  "fs": 48000,
+  "marqueur_amp": 0.1,
+  "marqueur_silence_s": 0.5,
+  "fichiers": {
+    "01_impulse.wav": {
+      "note": "Impulsion pleine echelle + 5 s de queue. Chaine lineaire uniquement.",
+      "duree_s": 5.5,
+      "crete": 1.0,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "impulse",
+          "amp_dbfs": 0.0
+        }
+      ]
+    },
+    "02_sweep_ref.wav": {
+      "note": "Sweep log 20-20k, 8 s, -6 dBFS. Reference lineaire.",
+      "duree_s": 11.5,
+      "crete": 0.5012,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "sweep",
+          "duree_s": 8.0,
+          "f1": 20.0,
+          "f2": 20000.0,
+          "amp_dbfs": -6.0
+        }
+      ]
+    },
+    "10_sweep_niveaux.wav": {
+      "note": "5 sweeps log a -40/-24/-12/-6/0 dBFS. Le fichier cle pour les NAM.",
+      "duree_s": 50.5,
+      "crete": 1.0,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "sweep",
+          "duree_s": 8.0,
+          "f1": 20.0,
+          "f2": 20000.0,
+          "amp_dbfs": -40.0
+        },
+        {
+          "t0_s": 10.5,
+          "type": "sweep",
+          "duree_s": 8.0,
+          "f1": 20.0,
+          "f2": 20000.0,
+          "amp_dbfs": -24.0
+        },
+        {
+          "t0_s": 20.5,
+          "type": "sweep",
+          "duree_s": 8.0,
+          "f1": 20.0,
+          "f2": 20000.0,
+          "amp_dbfs": -12.0
+        },
+        {
+          "t0_s": 30.5,
+          "type": "sweep",
+          "duree_s": 8.0,
+          "f1": 20.0,
+          "f2": 20000.0,
+          "amp_dbfs": -6.0
+        },
+        {
+          "t0_s": 40.5,
+          "type": "sweep",
+          "duree_s": 8.0,
+          "f1": 20.0,
+          "f2": 20000.0,
+          "amp_dbfs": 0.0
+        }
+      ]
+    },
+    "20_paliers_1k.wav": {
+      "note": "Sinus 1000 Hz par paliers de 5 dB, -60 -> 0 dBFS. Profil harmonique par niveau.",
+      "duree_s": 26.5,
+      "crete": 1.0,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -60.0
+        },
+        {
+          "t0_s": 2.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -55.0
+        },
+        {
+          "t0_s": 4.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -50.0
+        },
+        {
+          "t0_s": 6.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -45.0
+        },
+        {
+          "t0_s": 8.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -40.0
+        },
+        {
+          "t0_s": 10.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -35.0
+        },
+        {
+          "t0_s": 12.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -30.0
+        },
+        {
+          "t0_s": 14.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -25.0
+        },
+        {
+          "t0_s": 16.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -20.0
+        },
+        {
+          "t0_s": 18.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -15.0
+        },
+        {
+          "t0_s": 20.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -10.0
+        },
+        {
+          "t0_s": 22.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -5.0
+        },
+        {
+          "t0_s": 24.5,
+          "type": "palier",
+          "freq": 1000.0,
+          "duree_s": 1.5,
+          "amp_dbfs": 0.0
+        }
+      ]
+    },
+    "21_paliers_100hz.wav": {
+      "note": "Sinus 100 Hz par paliers de 5 dB, -60 -> 0 dBFS. Profil harmonique par niveau.",
+      "duree_s": 26.5,
+      "crete": 1.0,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -60.0
+        },
+        {
+          "t0_s": 2.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -55.0
+        },
+        {
+          "t0_s": 4.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -50.0
+        },
+        {
+          "t0_s": 6.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -45.0
+        },
+        {
+          "t0_s": 8.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -40.0
+        },
+        {
+          "t0_s": 10.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -35.0
+        },
+        {
+          "t0_s": 12.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -30.0
+        },
+        {
+          "t0_s": 14.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -25.0
+        },
+        {
+          "t0_s": 16.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -20.0
+        },
+        {
+          "t0_s": 18.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -15.0
+        },
+        {
+          "t0_s": 20.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -10.0
+        },
+        {
+          "t0_s": 22.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": -5.0
+        },
+        {
+          "t0_s": 24.5,
+          "type": "palier",
+          "freq": 100.0,
+          "duree_s": 1.5,
+          "amp_dbfs": 0.0
+        }
+      ]
+    },
+    "22_rampe_1k.wav": {
+      "note": "Sinus 1 kHz, niveau de -60 a 0 dBFS en 30 s. Courbe de transfert continue.",
+      "duree_s": 31.5,
+      "crete": 0.9954,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "rampe",
+          "freq": 1000.0,
+          "duree_s": 30.0,
+          "dbfs_debut": -60.0,
+          "dbfs_fin": 0.0
+        }
+      ]
+    },
+    "30_bruit_rose.wav": {
+      "note": "Salves de bruit rose (graine fixe). Pour l'A/B a l'oreille, pas la mesure.",
+      "duree_s": 8.5,
+      "crete": 0.2512,
+      "segments": [
+        {
+          "t0_s": 0.5,
+          "type": "bruit_rose",
+          "duree_s": 1.0,
+          "amp_dbfs": -24.0
+        },
+        {
+          "t0_s": 4.5,
+          "type": "bruit_rose",
+          "duree_s": 1.0,
+          "amp_dbfs": -12.0
+        }
+      ]
+    }
+  }
+}

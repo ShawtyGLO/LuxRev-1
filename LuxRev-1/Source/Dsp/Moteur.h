@@ -1,0 +1,606 @@
+// LuxRev-1 — le moteur de reverbe.
+//
+// Transcription temps reel de _proto/moteur.py. Le prototype Python reste la
+// reference : toute divergence est un bug, pas une optimisation.
+//
+// La chaine, dans l'ordre du manuel de service du LXP-1 :
+//
+//   pre-accentuation 68 us -> anti-repliement 15,2 kHz -> ADC 16 bits a
+//   31,25 kHz -> [ FDN 8 lignes ] -> DAC 16 bits -> bloqueur d'ordre zero ->
+//   correction sinc -> mur anti-image 17 kHz -> STEREO -> TILT -> FIR de
+//   voicing -> de-accentuation
+//
+// ⚠️ Le reechantillonnage n'est pas une commodite. La machine travaille
+// reellement a 31,25 kHz et c'est ce qui borne sa bande a 15,6 kHz par
+// construction. Le passage retour est un BLOQUEUR D'ORDRE ZERO, pas un
+// interpolateur propre : le PCM54 maintient chaque echantillon jusqu'au suivant
+// et produit donc des images a 31250-f que le filtre analogique n'enleve qu'en
+// partie. Le contenu mesure entre 15 et 17 kHz sur les IR d'origine vient de la,
+// et de nulle part ailleurs — avec un reechantillonnage propre, le prototype
+// sortait 8 dB trop sombre a 16 kHz.
+//
+// ⚠️ DEUX PHASES, et c'est structurel :
+//   preparer()  alloue une fois, pour le PIRE cas (COLOR au maximum de taille).
+//   appliquer() pose les reglages SANS jamais allouer.
+// Sans cette separation, chaque mouvement de COLOR reconstruirait huit lignes a
+// retard dans le fil audio.
+
+#pragma once
+
+#include "Conception.h"
+#include "../Generated/Programmes.h"
+
+namespace luxrev
+{
+
+// Bornes de la macro COLOR sur `taille`. Elles fixent la memoire a reserver.
+inline constexpr float kTailleMax = 3.2f;
+inline constexpr float kProfondeurMax = 26.0f;   // vers le cremeux
+inline constexpr float kPredelaiMaxMs = 246.0f;  // Program table du manuel
+inline constexpr float kFenetreDiffMaxMs = 400.0f;
+
+//==============================================================================
+/** Tous les parametres du moteur. Miroir des arguments de Moteur.__init__.
+
+    ⚠️ Aucune valeur accordee ici : ce sont des reglages, pas des cibles. Les
+    valeurs viennent de Generated/Programmes.h, produites par accorder.py — seul
+    endroit ou une cible mesuree sur le LXP-1 entre dans la conception. Meme
+    regle qu'en Python, et pour la meme raison.
+*/
+struct Reglages
+{
+    float predelaiMs    = 0.0f;
+    float taille        = 1.0f;
+    float diffusion     = 0.75f;
+    float t60S          = 2.0f;
+    float ratioHf       = 0.7f;
+    float lpSortieHz    = 6000.0f;
+    float murHz         = 17000.0f;
+    float modProfondeur = 8.0f;
+    float modHz         = 0.7f;
+    int   bits          = 16;
+    bool  emphase       = true;
+    int   nDiffuseurs   = 4;
+    float priseTot      = 0.0f;
+    float mixage        = 1.0f;
+    float gainPrises    = 0.0f;
+    float etalement     = 0.0f;
+    int   nLignes       = kNFdn;
+    float forme         = 0.0f;
+    float pentePrises   = 0.0f;
+    float fenetreDiffMs = 60.0f;
+    float trebleHz      = 20000.0f;
+    float predelaiFb    = 0.0f;
+    float ratioBass     = 1.0f;
+    float crossBassHz   = 400.0f;
+    float hpSortieHz    = 0.0f;
+    float tiltDb        = 0.0f;
+    float tiltPivotHz   = 700.0f;
+    float stereo        = 1.0f;
+};
+
+/** Charge les reglages d'un programme accorde. */
+inline Reglages reglagesDe (const Programme& p)
+{
+    Reglages r;
+    r.predelaiMs    = p.predelaiMs;    r.lpSortieHz    = p.lpSortieHz;
+    r.murHz         = p.murHz;         r.taille        = p.taille;
+    r.t60S          = p.t60S;          r.diffusion     = p.diffusion;
+    r.mixage        = p.mixage;        r.ratioHf       = p.ratioHf;
+    r.ratioBass     = p.ratioBass;     r.crossBassHz   = p.crossBassHz;
+    r.gainPrises    = p.gainPrises;    r.etalement     = p.etalement;
+    r.forme         = p.forme;         r.pentePrises   = p.pentePrises;
+    r.modProfondeur = p.modProfondeur; r.modHz         = p.modHz;
+    r.priseTot      = p.priseTot;      r.fenetreDiffMs = p.fenetreDiffMs;
+    r.trebleHz      = p.trebleHz;      r.predelaiFb    = p.predelaiFb;
+    r.hpSortieHz    = p.hpSortieHz;
+    return r;
+}
+
+//==============================================================================
+/** Courbe de compensation, normalisee pour valoir EXACTEMENT 1,0 au centre.
+
+    ⚠️ Sans cette normalisation, COLOR a 50 % ne redonne pas le moteur accorde.
+    Les courbes sont obtenues par regression, donc leur point central sort a 1,01
+    ou 0,995 — assez pour decaler le T60 de 1 % au milieu de la course. Inaudible,
+    mais c'est la promesse du bouton qui tombe : le son a position d'origine ne
+    doit pas s'ecarter des mesures des IR. Le centre est un point fixe, pas un
+    resultat d'ajustement.
+*/
+inline float lireCompensation (const float* points, float r) noexcept
+{
+    const float milieu = points[2];                        // COLOR = 0,5
+    if (std::abs (milieu) < 1e-9f) return 1.0f;
+
+    const float x = std::clamp (r, 0.0f, 1.0f) * 4.0f;     // 5 points, 4 intervalles
+    const int   k = std::min ((int) x, 3);
+    const float f = x - (float) k;
+    return (points[k] + (points[k + 1] - points[k]) * f) / milieu;
+}
+
+/** COLOR : 50 % = le LXP-1 mesure, en dessous plus cremeux, au-dessus plus
+    « metallique synthetique ».
+
+    ⚠️ Par INTERPOLATION vers des extremes, pas par multiplication. L'accordeur
+    ne laisse aucune marge — `mixage` sort a 0,05 et `taille` touche son plafond —
+    donc multiplier ne bougeait quasiment rien d'un cote et saturait de l'autre.
+
+    Les deux compensations garantissent que COLOR change le CARACTERE (densite
+    modale, grain) sans toucher a la DUREE ni au TIMBRE. C'est verifiable a
+    l'ecran : tourner COLOR ne doit pas deplacer la reponse en frequence.
+*/
+inline Reglages macroColor (const Reglages& base, float color, const Programme& p)
+{
+    const float r = std::clamp (color, 0.0f, 1.0f);
+    const float u = (r - 0.5f) * 2.0f;      // -1 cremeux, 0 reference, +1 metallique
+    const float k = std::abs (u);
+
+    Reglages q = base;
+    auto vers = [k] (float actuel, float but) { return actuel + (but - actuel) * k; };
+
+    if (u < 0.0f)                            // vers le cremeux
+    {
+        q.taille        = std::clamp (vers (base.taille, base.taille * 2.6f), 0.06f, kTailleMax);
+        q.mixage        = vers (base.mixage, 1.0f);
+        q.modProfondeur = vers (base.modProfondeur, kProfondeurMax);
+        q.nLignes       = kNFdn;
+    }
+    else                                     // vers le metallique
+    {
+        q.taille        = std::clamp (vers (base.taille, std::max (base.taille * 0.45f, 0.30f)),
+                                      0.06f, kTailleMax);
+        q.mixage        = vers (base.mixage, 0.06f);
+        q.modProfondeur = vers (base.modProfondeur, 0.0f);
+        q.nLignes       = (int) std::lround (8.0f - k * 4.0f);
+    }
+
+    q.t60S      *= lireCompensation (p.compensationColor, r);
+    q.lpSortieHz = std::clamp (q.lpSortieHz * lireCompensation (p.compensationLp, r),
+                               1000.0f, 22000.0f);
+    return q;
+}
+
+//==============================================================================
+class Moteur
+{
+public:
+    static constexpr int kNPrisesFf = 12;
+    static constexpr int kSlack = 4;      // avance de l'anneau interne, en echantillons
+
+    //--------------------------------------------------------------------------
+    /** Alloue tout, pour le pire cas. Jamais appele depuis le fil audio. */
+    void preparer (double sampleRateHote)
+    {
+        fsHote = sampleRateHote;
+        ratio  = fsHote / kFsInterne;
+
+        interp.preparer();
+        anneauIn.assign ((size_t) kTailleAnneau, 0.0f);
+        anneauL.assign  ((size_t) kTailleAnneau, 0.0f);
+        anneauR.assign  ((size_t) kTailleAnneau, 0.0f);
+
+        preSos = emphase (fsHote, false);
+        deSosL = deSosR = emphase (fsHote, true);
+
+        // Anti-repliement (entree) et anti-image (sortie), chacun a la frequence
+        // ou il travaille reellement. L'anti-repliement doit rester sous Nyquist
+        // interne (15,6 kHz) sans manger la bande utile : la machine passe
+        // 15 kHz a -3,8 dB seulement.
+        Biquad tmp[Chaine::kMaxSections];
+        aa.poser (tmp, butterworthPasseBas (tmp, 6, 15200.0, fsHote));
+
+        const auto sinc = correctionSinc (fsHote);
+        sincL.preparer ((int) sinc.size()); sincL.poser (sinc.data(), (int) sinc.size());
+        sincR.preparer ((int) sinc.size()); sincR.poser (sinc.data(), (int) sinc.size());
+        voicingL.preparer (kTailleFirVoicing);
+        voicingR.preparer (kTailleFirVoicing);
+
+        // --- allocations dimensionnees au PIRE cas, une fois pour toutes
+        const double fs = kFsInterne;
+        predelai.preparer (std::max ((int) std::lround (kPredelaiMaxMs * 1e-3 * fs), 1));
+
+        for (int k = 0; k < 4; ++k)
+            diff[(size_t) k].preparer (transpose (kDiffuseurLongueurs[k], fs), 0.0f);
+
+        const int margeMax = (int) (kProfondeurMax * kTailleMax) + 2;
+        for (int k = 0; k < kNFdn; ++k)
+            lignes[(size_t) k].preparer (transpose (kFdnLongueurs[k], fs, kTailleMax), margeMax);
+
+        // L'etalement reste sous le plus court des retards de boucle (contrainte
+        // portee sur la FIG. 2d du brevet Jot), donc borne par la ligne la plus
+        // courte a la taille maximale.
+        const int tauMax = transpose (kFdnLongueurs[0], fs, kTailleMax);
+        for (int k = 0; k < kNFdn; ++k)
+            injections[(size_t) k].preparer (std::max ((int) (tauMax * 0.95), 1));
+
+        ffN = (int) (kFenetreDiffMaxMs * 1e-3 * fs) + 2;
+        ffBuf.assign ((size_t) ffN, 0.0f);
+
+        vider();
+    }
+
+    void vider()
+    {
+        std::fill (anneauIn.begin(), anneauIn.end(), 0.0f);
+        std::fill (anneauL.begin(),  anneauL.end(),  0.0f);
+        std::fill (anneauR.begin(),  anneauR.end(),  0.0f);
+        ecritsIn = 0; ecritsInterne = kSlack; posLecture = 0.0; posSortie = 0.0;
+
+        preSos.vider(); deSosL.vider(); deSosR.vider();
+        aa.vider(); murL.vider(); murR.vider(); tiltL.vider(); tiltR.vider();
+        sincL.vider(); sincR.vider(); voicingL.vider(); voicingR.vider();
+
+        predelai.vider();
+        for (auto& d : diff)       d.vider();
+        for (auto& l : lignes)     l.vider();
+        for (auto& d : injections) d.vider();
+        std::fill (ffBuf.begin(), ffBuf.end(), 0.0f); ffI = 0;
+        for (int k = 0; k < kNFdn; ++k) { etats[k] = sorties[k] = eBass[k] = lfoEtat[k] = 0.0f; }
+        eTreble = fbEtat = sL = sR = hL = hR = 0.0f;
+    }
+
+    //--------------------------------------------------------------------------
+    /** Pose un jeu de reglages SANS allouer. Appelable depuis le fil audio. */
+    void appliquer (const Reglages& r, const Programme* prog)
+    {
+        const bool nouveauProgramme = (prog != programme);
+        reg = r;
+        programme = prog;
+
+        const double fs = kFsInterne;
+        nLignes = std::clamp (reg.nLignes, 2, kNFdn);
+
+        // ⚠️ Profondeur RELATIVE a la taille. En absolu, 8 echantillons sur la
+        // ligne d'un grand hall font 0,55 % et sur une petite salle 2,3 %, soit
+        // quatre fois plus de desaccord — ce qui s'entendait comme un flanger
+        // sur les programmes courts.
+        profondeur = reg.modProfondeur * reg.taille;
+
+        predelai.poserLongueur (std::max ((int) std::lround (reg.predelaiMs * 1e-3 * fs), 1));
+        kTreble = coefLp (reg.trebleHz, fs);
+
+        nDiff = std::clamp (reg.nDiffuseurs, 0, 4);
+        for (int k = 0; k < nDiff; ++k)
+            diff[(size_t) k].poserCoef (std::min (reg.diffusion * (kDiffuseurCoeffs[k] / 0.75f), 0.92f));
+
+        for (int k = 0; k < nLignes; ++k)
+            lignes[(size_t) k].poserNominal (transpose (kFdnLongueurs[k], fs, reg.taille));
+
+        // Signes alternes sur les prises : deux sorties decorrelees sans ajouter
+        // de retard — la mesure donne une correlation L/R nulle sur les 14 IR.
+        for (int k = 0; k < nLignes; ++k)
+            signes[k] = ((k / 2) % 2 == 0) ? 1.0f : -1.0f;
+
+        // Injection retardee, une par ligne (brevet Jot US5491754, FIG. 2d, bloc
+        // « FIRST ECHOS CONTROL »). L'entree n'arrive pas simultanement dans les
+        // huit lignes : les premieres arrivees en sortie sont donc directement ce
+        // motif, obtenu sans section de reflexions separee.
+        int tauMin = lignes[0].nominalEch();
+        for (int k = 0; k < nLignes; ++k) tauMin = std::min (tauMin, lignes[(size_t) k].nominalEch());
+        const double etal = std::clamp (reg.etalement, 0.0f, 0.95f) * tauMin;
+        for (int k = 0; k < nLignes; ++k)
+            injections[(size_t) k].poserLongueur (
+                std::max ((int) std::lround (etal * k / std::max (nLignes - 1, 1)), 1));
+
+        // SHAPE au sens ou Lexicon l'emploie : « Spread est une fenetre de temps
+        // pendant laquelle le signal est injecte dans la reverbe ; Shape controle
+        // COMMENT il l'est. » Poids triangulaire centre sur `forme` : a 0 tout
+        // entre au debut, a 1 tout entre a la fin. Un hall demande l'inverse d'un
+        // front-loaded — c'est ce qui bloquait `hall_b`.
+        const float f = std::clamp (reg.forme, 0.0f, 1.0f);
+        for (int k = 0; k < nLignes; ++k)
+        {
+            const float u = (float) k / (float) std::max (nLignes - 1, 1);
+            bInj[k] = std::max (1.0f - std::abs (u - f) * 2.2f, 0.03f);
+        }
+
+        // Banc de retards en PARALLELE, douze prises sur la fenetre de diffusion.
+        {
+            const double fen = std::clamp (reg.fenetreDiffMs, 5.0f, kFenetreDiffMaxMs) * 1e-3 * fs;
+            for (int k = 0; k < kNPrisesFf; ++k)
+                ffTaps[k] = std::min (std::max ((int) (fen * std::pow ((k + 1.0) / kNPrisesFf, 1.3)), 1),
+                                      ffN - 1);
+            // Pente en dB entre la premiere et la derniere prise. Positive =
+            // arrivees precoces attenuees, donc enveloppe qui monte : dans une
+            // salle, la densite d'arrivees CROIT avec le temps.
+            for (int k = 0; k < kNPrisesFf; ++k)
+                poidsPrises[k] = (float) std::pow (10.0,
+                    -reg.pentePrises * (kNPrisesFf - 1 - k) / (kNPrisesFf - 1) / 20.0);
+        }
+
+        reglerT60();
+
+        lpOut = coefLp (reg.lpSortieHz, fs);
+        kHp   = reg.hpSortieHz > 0.0f ? coefLp (reg.hpSortieHz, fs) : 0.0f;
+
+        Biquad tmp[Chaine::kMaxSections];
+        const int n = butterworthPasseBas (tmp, 6, reg.murHz, fsHote);
+        murL.poser (tmp, n);
+        murR.poser (tmp, n);
+
+        tiltActif = std::abs (reg.tiltDb) > 0.01f;
+        if (tiltActif)
+        {
+            const Biquad b = tilt (reg.tiltDb, reg.tiltPivotHz, fsHote);
+            tiltL.poser (&b, 1);
+            tiltR.poser (&b, 1);
+        }
+        else { tiltL.effacer(); tiltR.effacer(); }
+
+        if (programme != nullptr && nouveauProgramme)
+        {
+            voicingL.poser (programme->firVoicing, kTailleFirVoicing);
+            voicingR.poser (programme->firVoicing, kTailleFirVoicing);
+        }
+
+        // Modulation : bruit blanc filtre par un pole a tau = fs / mod_hz / 6.
+        // ⚠️ Le prototype normalise l'ecart-type sur le bloc rendu ; en flux
+        // continu on ne peut pas, donc on corrige analytiquement — l'ecart-type
+        // en regime etabli d'un pole `a` sur du bruit unitaire vaut
+        // sqrt((1-a)/(1+a)).
+        {
+            const double tau = std::max (fs / std::max ((double) reg.modHz, 0.01) / 6.0, 2.0);
+            const double a   = std::exp (-1.0 / tau);
+            aLfo    = (float) (1.0 - a);
+            gainLfo = (float) std::sqrt ((1.0 + a) / std::max (1.0 - a, 1e-9));
+        }
+    }
+
+    int latenceEchantillons() const noexcept
+    {
+        return sincL.latence() + voicingL.latence() + (int) std::ceil (ratio * kSlack);
+    }
+
+    //--------------------------------------------------------------------------
+    /** Traite un bloc mono vers deux sorties, a la frequence de l'hote. */
+    void traiter (const float* entree, float* sortieL, float* sortieR, int n) noexcept
+    {
+        // --- 1. etage d'entree a la frequence de l'hote
+        for (int i = 0; i < n; ++i)
+        {
+            float x = entree[i];
+            if (reg.emphase) x = preSos.traiter (x);
+            anneauIn[(size_t) (ecritsIn & kMasque)] = aa.traiter (x);
+            ++ecritsIn;
+        }
+
+        // --- 2. descente vers 31,25 kHz, puis le tank
+        while (posLecture + (double) InterpolateurSinc::kTaps < (double) ecritsIn)
+        {
+            const float xi = lireInterpole (posLecture);
+            posLecture += ratio;
+
+            float g = 0.0f, d = 0.0f;
+            tank (quantifier (xi, reg.bits, bruit), g, d);         // ADC
+
+            anneauL[(size_t) (ecritsInterne & kMasque)] = quantifier (g, reg.bits, bruit);
+            anneauR[(size_t) (ecritsInterne & kMasque)] = quantifier (d, reg.bits, bruit);
+            ++ecritsInterne;                                        // DAC
+        }
+
+        // --- 3. remontee par BLOQUEUR D'ORDRE ZERO, puis reconstruction
+        const double pas = 1.0 / ratio;
+        for (int i = 0; i < n; ++i)
+        {
+            long long k = (long long) posSortie;
+            k = std::min (k, ecritsInterne - 1);
+            k = std::max (k, 0LL);
+            posSortie += pas;
+
+            float L = murL.traiter (sincL.traiter (anneauL[(size_t) (k & kMasque)]));
+            float R = murR.traiter (sincR.traiter (anneauR[(size_t) (k & kMasque)]));
+
+            if (std::abs (reg.stereo - 1.0f) > 1e-3f)
+            {
+                const float mid  = (L + R) * 0.5f;
+                const float cote = (L - R) * 0.5f * reg.stereo;
+                L = mid + cote; R = mid - cote;
+            }
+            if (tiltActif) { L = tiltL.traiter (L); R = tiltR.traiter (R); }
+            L = voicingL.traiter (L);
+            R = voicingR.traiter (R);
+            if (reg.emphase) { L = deSosL.traiter (L); R = deSosR.traiter (R); }
+
+            sortieL[i] = L;
+            sortieR[i] = R;
+        }
+
+        // On evite que les compteurs derivent vers l'infini sur une session longue.
+        if (ecritsIn > (1LL << 40))
+        {
+            const long long dIn = ecritsIn - (long long) posLecture;
+            ecritsIn = dIn; posLecture = 0.0;
+            const long long dOut = ecritsInterne - (long long) posSortie;
+            ecritsInterne = dOut; posSortie = 0.0;
+        }
+    }
+
+private:
+    static constexpr int kTailleAnneau = 1 << 15;
+    static constexpr long long kMasque = kTailleAnneau - 1;
+
+    //--------------------------------------------------------------------------
+    /** Lecture fractionnaire de l'anneau d'entree.
+
+        Le vrai anti-repliement est fait juste avant par le Butterworth d'ordre 6
+        a 15,2 kHz — celui de la machine. L'interpolateur n'a plus qu'a placer
+        l'echantillon au bon instant, mais il doit le faire SANS assombrir :
+        voir InterpolateurSinc, un Lagrange cubique coutait ici 2,2 dB d'aigu.
+    */
+    inline float lireInterpole (double pos) const noexcept
+    {
+        return interp.lire (anneauIn.data(), kMasque, pos);
+    }
+
+    //--------------------------------------------------------------------------
+    /** Un echantillon du reseau a retards boucles, matrice de Householder.
+
+        La matrice unitaire melange les huit lignes en O(N) : y_i = v_i - (2/N) somme(v).
+        Unitaire, donc tous les poles gardent le meme module — aucun mode ne
+        survit aux autres pour colorer la queue.
+
+        `mixage` interpole entre l'identite (huit lignes independantes, spectre
+        creuse, timbre metallique) et Householder complet (queue lisse). C'est ce
+        parametre, et non la longueur des lignes, qui porte le temps de melange —
+        les deux etaient confondus dans la version figure-8, et il fallait
+        choisir entre un spectre juste et une montee juste.
+    */
+    inline void tank (float x, float& gaucheOut, float& droiteOut) noexcept
+    {
+        const int NL = nLignes;
+
+        // Treble -> Diffusion -> Predelay, avec contre-reaction autour des trois.
+        // ⚠️ Cet ordre vient du manuel LXP-15 : « Predelay is located after Treble
+        // and Diffusion and before the reverb », et « a feedback loop around
+        // Treble, Diffusion, and Predelay ». Le prototype avait d'abord l'inverse,
+        // et la boucle manquait entierement.
+        const float u = x + fbEtat * reg.predelaiFb;
+        eTreble += kTreble * (u - eTreble);
+        float v = eTreble;
+        for (int k = 0; k < nDiff; ++k) v = diff[(size_t) k].traiter (v);
+        v = predelai.pousser (v);
+        fbEtat = v;
+
+        float somme = 0.0f;
+        for (int k = 0; k < NL; ++k) somme += sorties[k];
+        const float fMix = reg.mixage * 2.0f / (float) NL * somme;
+
+        for (int k = 0; k < NL; ++k)
+        {
+            // Modulation ALEATOIRE, pas sinusoidale : « CHORUSING randomizes
+            // delay times » (manuel PCM 70), « randomly damped » (brevet EMT).
+            // Un sinus fait respirer toute la queue au meme rythme et laisse
+            // entendre sa periode ; un bruit lent desaccorde les modes sans
+            // jamais se repeter.
+            lfoEtat[k] += aLfo * (bruit.gaussien() - lfoEtat[k]);
+            const float lfo = std::clamp (lfoEtat[k] * gainLfo, -2.5f, 2.5f)
+                                * profondeur * 0.4f + profondeur * 0.5f;
+
+            const float inj = bInj[k] * injections[(size_t) k].pousser (v);
+            const float e = (sorties[k] - fMix) + inj;
+            const float d = lignes[(size_t) k].traiter (e, lfo);
+
+            // h_i(Z) du brevet Jot : passe-bas du 1er ordre a gain continu g_dc et
+            // pente propre a la ligne. Gain ET pente proportionnels a la longueur,
+            // sans quoi la perte par SECONDE serait d'autant plus faible que la
+            // ligne est longue, et la queue finirait gouvernee par la plus longue.
+            etats[k] = gains[k] * (1.0f - bAbs[k]) * d + bAbs[k] * etats[k];
+            // « Bass Multiply provides control over bass reverb time » : un
+            // MULTIPLICATEUR du temps de decroissance sous la coupure, pas une
+            // attenuation. A ratio 1,0 le terme est nul et rien ne change.
+            eBass[k] += kCross * (etats[k] - eBass[k]);
+            sorties[k] = etats[k] + gainBass[k] * eBass[k];
+        }
+
+        float gch = 0.0f, drt = 0.0f;
+        for (int k = 0; k + 1 < NL; k += 2)
+        {
+            gch += signes[k]     * sorties[k];
+            drt += signes[k + 1] * sorties[k + 1];
+        }
+
+        // Banc de retards en PARALLELE, alimente par l'entree diffusee.
+        // ⚠️ Ces prises etaient d'abord posees SUR les lignes du FDN, donc elles
+        // debitaient a CHAQUE tour : la queue restait dense en permanence et le
+        // temps de melange sortait 2 a 4 fois trop court, sans qu'aucun reglage
+        // n'y change rien. En parallele, elles ne produisent que des arrivees
+        // precoces — DIFFUSION — et la densite tardive redevient l'affaire de la
+        // seule matrice — DEFINITION. Le PCM 70 distingue bien les deux.
+        ffBuf[(size_t) ffI] = v;
+        if (++ffI >= ffN) ffI = 0;
+        for (int t = 0; t < kNPrisesFf; ++t)
+        {
+            int j = ffI - ffTaps[t]; if (j < 0) j += ffN;
+            const float e = ffBuf[(size_t) j] * poidsPrises[t];
+            if (t & 1) gch += reg.gainPrises * e;
+            else       drt += reg.gainPrises * e;
+        }
+
+        // Prise instantanee en sortie du diffuseur : le seul point qui ne traverse
+        // aucune ligne, donc le seul vraiment precoce. Sans elle, le signal doit
+        // traverser un bras entier avant d'atteindre la sortie.
+        gch += reg.priseTot * v;
+        drt -= reg.priseTot * v;
+
+        sL += lpOut * (gch - sL);
+        sR += lpOut * (drt - sR);
+
+        if (kHp > 0.0f)                    // « Low Cut Filter »
+        {
+            hL += kHp * (sL - hL);
+            hR += kHp * (sR - hR);
+            gaucheOut = sL - hL;
+            droiteOut = sR - hR;
+        }
+        else { gaucheOut = sL; droiteOut = sR; }
+    }
+
+    //--------------------------------------------------------------------------
+    /** Gain de boucle donnant la decroissance voulue.
+
+        Dans un FDN a matrice unitaire, chaque tour d'une ligne subit g une fois
+        et dure sa propre longueur : perdre 60 dB en t60 impose
+        g = 10^(-3 * longueur / (t60 * fs)).
+    */
+    void reglerT60() noexcept
+    {
+        const double fs = kFsInterne;
+        const double r  = std::clamp ((double) reg.ratioHf, 0.1, 2.0);
+        const double t60Hf = std::max (reg.t60S * r, 1e-3);
+        const double rb = std::clamp ((double) reg.ratioBass, 0.25, 4.0);
+        kCross = coefLp (reg.crossBassHz, fs);
+
+        for (int k = 0; k < kNFdn; ++k) { gains[k] = 0.0f; bAbs[k] = 0.0f; gainBass[k] = 0.0f; }
+        if (reg.t60S <= 0.0f) return;
+
+        for (int k = 0; k < nLignes; ++k)
+        {
+            const double L = lignes[(size_t) k].nominalEch();
+            const double gDc = std::min (std::pow (10.0, -3.0 * L / (reg.t60S * fs)), 0.9999);
+            const double gHf = std::min (std::pow (10.0, -3.0 * L / (t60Hf * fs)), 0.9999);
+            const double rap = std::clamp (gHf / std::max (gDc, 1e-12), 1e-6, 0.999);
+
+            gains[k] = (float) gDc;
+            bAbs[k]  = (float) std::clamp ((1.0 - rap) / (1.0 + rap), -0.95, 0.95);
+
+            const double gLf = std::min (
+                std::pow (10.0, -3.0 * L / (std::max ((double) reg.t60S * rb, 1e-3) * fs)), 0.9999);
+            gainBass[k] = (float) (gLf / std::max (gDc, 1e-12) - 1.0);
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    Reglages reg;
+    const Programme* programme = nullptr;
+
+    double fsHote = 48000.0, ratio = 48000.0 / kFsInterne;
+    long long ecritsIn = 0, ecritsInterne = kSlack;
+    double posLecture = 0.0, posSortie = 0.0;
+    std::vector<float> anneauIn, anneauL, anneauR;
+    InterpolateurSinc interp;
+
+    Biquad preSos, deSosL, deSosR;
+    Chaine aa, murL, murR, tiltL, tiltR;
+    Fir sincL, sincR, voicingL, voicingR;
+    bool tiltActif = false;
+
+    Delai predelai;
+    Allpass diff[4];
+    LigneModulee lignes[kNFdn];
+    Delai injections[kNFdn];
+    std::vector<float> ffBuf;
+    int ffTaps[kNPrisesFf] {};
+    float poidsPrises[kNPrisesFf] {};
+    int ffN = 8, ffI = 0, nLignes = kNFdn, nDiff = 4;
+
+    float signes[kNFdn] {}, bInj[kNFdn] {}, gains[kNFdn] {}, bAbs[kNFdn] {}, gainBass[kNFdn] {};
+    float etats[kNFdn] {}, sorties[kNFdn] {}, eBass[kNFdn] {}, lfoEtat[kNFdn] {};
+
+    float kTreble = 1.0f, kCross = 0.0f, lpOut = 1.0f, kHp = 0.0f;
+    float profondeur = 0.0f, aLfo = 0.0f, gainLfo = 1.0f;
+    float eTreble = 0.0f, fbEtat = 0.0f, sL = 0.0f, sR = 0.0f, hL = 0.0f, hR = 0.0f;
+
+    Bruit bruit { 20260907u };
+};
+
+} // namespace luxrev

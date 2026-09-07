@@ -1,19 +1,19 @@
-# ═══ NON NEGOCIABLE — licence T3K ═══
-# Les IR et les modeles NAM sont sous licence T3K : usage dans un logiciel et publication
-# des sorties autorises, REDISTRIBUTION DES FICHIERS INTERDITE. Ils ne doivent jamais
-# entrer dans un depot, public ou prive.
-Impulse Responce LXP-1/
-*.nam
+# --- artefacts de compilation -------------------------------------------------
+LuxRev-1/Builds/VisualStudio2022/x64/
+LuxRev-1/Builds/VisualStudio2022/Win32/
+LuxRev-1/Builds/VisualStudio2022/*.user
+LuxRev-1/JuceLibraryCode/
+LuxRev-1/tools/*.exe
+LuxRev-1/tools/*.obj
 
-# Rendus et signaux : volumineux et reproductibles par les scripts.
-_proto/signaux/
-_proto/rendus/
+# --- rendus : ils se refabriquent, et ils sont lourds --------------------------
 _proto/rendus_moteur/
-_proto/mesures/planches/
-*.wav
+_proto/rendus/
+_proto/signaux/RENDER*/
 
-# Outillage et cache
-_proto/__pycache__/
+# ⚠️ LICENCE T3K — les IR et les modeles NAM ne doivent JAMAIS partir dans un
+# depot. Leur usage est autorise, leur redistribution ne l'est pas.
+Impulse Responce LXP-1/
+
 __pycache__/
 *.pyc
-_outils/pluginval/
