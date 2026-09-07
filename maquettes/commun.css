@@ -23,16 +23,22 @@
   --verre-2:      #0d1a26;
   --lueur:        #63c6e8;
   --lueur-faible: #2d6a84;
-  --cellule:      rgba(99,198,232,.09);
+  --cellule:      var(--cellule);
   --usure:        .34;
 }
 :root[data-skin="clair"]{
+  /* CLAIR + ROUGE (décidé 2026-09-07). Le bleu va au noir, le rouge au crème :
+     sur un panneau chaud, une ligne bleue jure ; une ligne rouge orangée passe
+     pour de la sérigraphie d'époque qui a viré.
+     ⚠️ L'utilisateur signale que Relab Audio occupe déjà ces tons sur ses
+     Lexicon. Ce n'est donc PAS une couleur neutre : à retenir si cette version
+     sort un jour de la réserve. */
   --fond:         #17161a;
   --panneau-a:    #cec7b4;
   --panneau-b:    #bdb5a1;
   --panneau-c:    #a9a08c;
-  --bande:        #3f78a6;
-  --bande-2:      #6fa8ce;
+  --bande:        #a8452c;
+  --bande-2:      #d0714f;
   --serigraphie:  #403c34;
   --serigraphie-2:#6d6759;
   --bouton-a:     #3a3833;
@@ -40,17 +46,20 @@
   --repere:       #e8e0c8;
   --creux:        rgba(60,52,38,.45);
   --relief:       rgba(255,250,235,.55);
-  --verre:        #10222e;
-  --verre-2:      #17303f;
-  --lueur:        #7fd0ee;
-  --lueur-faible: #3d7f9c;
-  --cellule:      rgba(127,208,238,.10);
+  --verre:        #23100c;
+  --verre-2:      #331912;
+  --lueur:        #f08a63;
+  --lueur-faible: #9c5540;
+  --cellule:      rgba(240,138,99,.16);
   --usure:        .30;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --fond:#0a0a0c; } }
 :root[data-theme="dark"]{ --fond:#0a0a0c; }
 
 *{box-sizing:border-box}
+/* le fichier est ouvert seul, sans reset d'hote : sans ceci, un .bandeau[hidden]
+   reste affiche parce que display:flex l'emporte sur la valeur par defaut */
+[hidden]{display:none !important}
 body{
   margin:0; min-height:100vh; background:var(--fond);
   font:14px/1.5 "Helvetica Neue",Helvetica,Arial,sans-serif;
@@ -115,7 +124,7 @@ body{
 .rang{font-size:9px; letter-spacing:.26em; text-transform:uppercase; color:var(--lueur-faible)}
 .titre-prog{
   font-size:19px; font-weight:700; letter-spacing:.13em; text-transform:uppercase;
-  color:var(--lueur); text-shadow:0 0 12px rgba(99,198,232,.42);
+  color:var(--lueur); text-shadow:0 0 12px color-mix(in srgb, var(--lueur) 45%, transparent);
 }
 
 .grille{display:grid; grid-template-columns:repeat(3,1fr); gap:4px}
@@ -126,20 +135,20 @@ body{
 }
 .grille button:hover{color:var(--lueur)}
 .grille button[aria-pressed="true"]{
-  background:rgba(99,198,232,.20); color:var(--lueur); border-color:rgba(99,198,232,.45);
-  text-shadow:0 0 9px rgba(99,198,232,.5);
+  background:color-mix(in srgb, var(--lueur) 22%, transparent); color:var(--lueur); border-color:color-mix(in srgb, var(--lueur) 48%, transparent);
+  text-shadow:0 0 9px color-mix(in srgb, var(--lueur) 50%, transparent);
 }
 .grille button:focus-visible{outline:1px solid var(--lueur); outline-offset:1px}
 
 /* ---------------- courbe mesurée ---------------- */
-.trace{fill:none; stroke:var(--lueur); stroke-width:1.4; filter:drop-shadow(0 0 3px rgba(99,198,232,.55))}
-.trace-fond{fill:rgba(99,198,232,.13); stroke:none}
-.melange{stroke:rgba(99,198,232,.35); stroke-width:1; stroke-dasharray:2 3}
+.trace{fill:none; transition:none; stroke:var(--lueur); stroke-width:1.4; filter:drop-shadow(0 0 3px color-mix(in srgb, var(--lueur) 55%, transparent))}
+.trace-fond{fill:color-mix(in srgb, var(--lueur) 15%, transparent); stroke:none}
+.melange{stroke:color-mix(in srgb, var(--lueur) 38%, transparent); stroke-width:1; stroke-dasharray:2 3}
 .graduation{fill:var(--lueur-faible); font-size:7px; letter-spacing:.1em; text-transform:uppercase}
 
-.spectre{width:100%; height:34px; display:block}
-.spectre .barre{fill:rgba(99,198,232,.6)}
-.spectre .zero{stroke:rgba(99,198,232,.28); stroke-width:1}
+.spectre{width:100%; height:42px; display:block}
+.spectre .barre{fill:color-mix(in srgb, var(--lueur) 62%, transparent)}
+.spectre .zero{stroke:color-mix(in srgb, var(--lueur) 30%, transparent); stroke-width:1}
 
 .stats{display:flex; flex-direction:column; gap:3px; font-size:8.5px; letter-spacing:.13em;
        text-transform:uppercase; color:var(--lueur-faible)}
@@ -153,7 +162,7 @@ body{
 }
 .lecture b{color:var(--lueur); font-weight:600; font-variant-numeric:tabular-nums;
            letter-spacing:.04em; margin-left:auto; text-transform:none; font-size:12px}
-.jauge{flex:1; height:2px; background:rgba(99,198,232,.16); border-radius:2px;
+.jauge{flex:1; height:2px; background:color-mix(in srgb, var(--lueur) 18%, transparent); border-radius:2px;
        position:relative; max-width:110px}
 .jauge i{position:absolute; top:0; height:2px; background:var(--lueur); border-radius:2px;
          box-shadow:0 0 6px var(--lueur)}

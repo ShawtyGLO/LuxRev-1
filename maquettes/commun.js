@@ -95,47 +95,117 @@ function fabrique(c, montrer){
   return {bloc:bloc, set:x=>{ v=x; pose(false); }, def:()=>{ v=c.def; pose(false); }};
 }
 
-/* ---------------- la courbe mesurée ----------------
-   ⚠️ Ce n'est PAS un décor. Les 100 points viennent de `enveloppe_db` des
-   mesures réelles sur les 14 IR (mesures.js, généré depuis _proto/mesures/).
-   C'est ce qui distingue cet écran d'un sélecteur de presets : il montre la
-   forme mesurée du programme, y compris ce qu'elle a d'atypique — le plateau
-   de Gate, la montée d'Inverse.                                              */
+/* ---------------- la courbe, VIVANTE ----------------
 
-function courbe(svg, nom){
+   Demande de l'utilisateur (2026-09-07) : « decay, pré-delay et tilt devraient
+   être représentés graphiquement et non pas uniquement par une jauge qui se
+   remplit — voir la courbe centrale réagir serait intuitif et plus parlant ».
+
+   Le TRACÉ DE FOND est l'enveloppe RÉELLEMENT MESURÉE du programme
+   (mesures.js, généré depuis _proto/mesures/). Il ne bouge jamais : c'est la
+   machine, la référence.
+
+   Le TRACÉ VIF est ce même relevé transformé par les commandes. Trois de ces
+   transformations sont EXACTES — ce sont les opérations que le moteur fait
+   vraiment :
+     - Decay      : dilatation du temps après le pic, rapport T60 demandé / mesuré
+     - Pre-Delay  : décalage, à la milliseconde
+     - Mix        : décalage vertical en dB
+   ⚠️ La quatrième ne l'est PAS. COLOR n'a pas d'effet mesurable sur
+   l'enveloppe — il agit sur la rugosité, donc sur le GRAIN. L'ondulation de la
+   queue est une REPRÉSENTATION de cette rugosité, pas une courbe relevée. Elle
+   est là parce que sans elle COLOR serait la seule commande muette à l'écran,
+   pas parce qu'on l'a mesurée.                                                */
+
+const T_MAX = 3000;   // la fenêtre de l'écran, en ms
+
+function courbe(svg, nom, etat){
   const m = MESURES[nom];
   if(!m) return;
-  const L = 300, H = 78, PLANCHER = -60;
+  const L = 300, H = 96, PLANCHER = -60;
   const y = d => H - Math.max(0, Math.min(1, (d - PLANCHER)/(0 - PLANCHER))) * H;
-  const pts = m.env.map((d,i) => (i/(m.env.length-1)*L).toFixed(1) + "," + y(d).toFixed(1));
+  const env = m.env, n = env.length, pasT = T_MAX/(n-1);
 
-  /* le temps de mélange : l'instant où la queue devient indistinguable d'un bruit.
-     Repère utile — c'est lui qui sépare une salle d'une plaque à l'oreille. */
-  const xm = Math.min(L, m.mel / 3000 * L);
+  function trace(e){ return e.map((d,i)=>(i/(n-1)*L).toFixed(1)+","+y(d).toFixed(1)).join(" "); }
+
+  /* --- le relevé, intact --- */
+  let h = '<polyline class="trace-fond" points="' + trace(env) + " " + L + "," + H + " 0," + H + '"/>';
+
+  if(etat){
+    const pic = env.indexOf(Math.max.apply(null, env));
+    const r   = Math.max(0.05, etat.decay / m.t60);      // dilatation du temps
+    const dec = etat.delay / pasT;                        // décalage, en points
+    const mix = 20 * Math.log10(Math.max(etat.mix/100, 1e-3));
+    const grain = (etat.color - 50)/50;                   // -1 crémeux .. +1 métallique
+
+    const vif = [];
+    for(let i = 0; i < n; i++){
+      const j = i - dec;                                  // Pre-Delay
+      if(j < 0){ vif.push(PLANCHER); continue; }
+      let src = j <= pic ? j : pic + (j - pic)/r;         // Decay
+      let d;
+      if(src >= n-1){ d = PLANCHER; }
+      else{
+        const k = Math.floor(src), f = src - k;
+        d = env[k] + (env[k+1] - env[k]) * f;
+      }
+      /* le grain : ondulation dans la queue seulement, jamais sur l'attaque */
+      if(grain !== 0 && j > pic){
+        const poids = Math.min(1, (j - pic) / (n * 0.25));
+        d += grain * 2.2 * poids * Math.sin(j * 1.9) * Math.sin(j * 0.47);
+      }
+      vif.push(Math.max(PLANCHER, d + mix));
+    }
+    h += '<polyline class="trace" points="' + trace(vif) + '"/>';
+  } else {
+    h += '<polyline class="trace" points="' + trace(env) + '"/>';
+  }
+
+  /* le temps de mélange mesuré : l'instant où la queue devient un bruit.
+     C'est lui qui sépare une salle d'une plaque à l'oreille. */
+  const xm = Math.min(L, m.mel / T_MAX * L);
+  h += '<line class="melange" x1="'+xm+'" y1="0" x2="'+xm+'" y2="'+H+'"/>'
+     + '<text class="graduation" x="'+(xm+4)+'" y="9">mélange ' + Math.round(m.mel) + ' ms</text>'
+     + '<text class="graduation" x="2" y="9">0</text>'
+     + '<text class="graduation" x="'+(L-22)+'" y="9">3 s</text>';
 
   svg.setAttribute("viewBox", "0 0 " + L + " " + H);
-  svg.innerHTML =
-      '<polyline class="trace-fond" points="' + pts.join(" ") + " " + L + "," + H + " 0," + H + '"/>'
-    + '<polyline class="trace" points="' + pts.join(" ") + '"/>'
-    + '<line class="melange" x1="'+xm+'" y1="0" x2="'+xm+'" y2="'+H+'"/>'
-    + '<text class="graduation" x="'+(xm+4)+'" y="10">mélange ' + Math.round(m.mel) + ' ms</text>'
-    + '<text class="graduation" x="2" y="'+(H-3)+'">0</text>'
-    + '<text class="graduation" x="'+(L-24)+'" y="'+(H-3)+'">3 s</text>';
+  svg.innerHTML = h;
 }
 
-function spectre(svg, nom){
+/* ---------------- la réponse, VIVANTE ----------------
+
+   L'utilisateur : « je ne comprends pas l'utilité de la réponse en fréquence,
+   si c'est du remplissage ce n'est pas instructif ». Il avait raison — elle
+   était muette. Elle a maintenant deux emplois, tous deux réels :
+
+   1. Elle AFFICHE TILT. C'est la seule commande dont l'effet est purement
+      spectral : la montrer sur une enveloppe temporelle n'aurait aucun sens,
+      la montrer ici en a un.
+   2. Elle PROUVE QUE COLOR NE TOUCHE PAS AU TIMBRE. C'est la promesse qu'on a
+      passé la journée à construire — les deux courbes de compensation existent
+      exactement pour ça. Tourner COLOR sans voir les barres bouger n'est pas
+      une absence d'information : c'est la vérification.                       */
+
+function spectre(svg, nom, etat){
   const m = MESURES[nom];
   if(!m) return;
-  const L = 300, H = 34, PLAGE = 12;   // +/- 12 dB autour du plat
+  const L = 300, H = 42, PLAGE = 12, PIVOT = 700;
   const n = m.sp.length, larg = L/n - 3;
-  let h = '<line class="zero" x1="0" y1="' + (H/2) + '" x2="' + L + '" y2="' + (H/2) + '"/>';
+  let h = '<line class="zero" x1="0" y1="'+(H/2)+'" x2="'+L+'" y2="'+(H/2)+'"/>';
   m.sp.forEach(function(p, i){
-    const t = Math.max(-1, Math.min(1, p[1]/PLAGE));
+    let v = p[1];
+    if(etat && etat.tilt){
+      /* tilt du premier ordre : asymptotes à ±tilt/2 de part et d'autre du pivot */
+      v += (etat.tilt/2) * Math.max(-1, Math.min(1, Math.log2(p[0]/PIVOT)/3));
+    }
+    const t  = Math.max(-1, Math.min(1, v/PLAGE));
     const hh = Math.max(1, Math.abs(t) * H/2);
-    const y = t >= 0 ? H/2 - hh : H/2;
-    h += '<rect class="barre" x="' + (i*(L/n)+1.5) + '" y="' + y + '" width="' + larg
-       + '" height="' + hh + '"><title>' + p[0] + ' Hz : ' + p[1].toFixed(1) + ' dB</title></rect>';
+    h += '<rect class="barre" x="'+(i*(L/n)+1.5)+'" y="'+(t>=0 ? H/2-hh : H/2)+'"'
+       + ' width="'+larg+'" height="'+hh+'"><title>'+p[0]+' Hz : '+v.toFixed(1)+' dB</title></rect>';
   });
+  h += '<text class="graduation" x="2" y="'+(H-2)+'">250 Hz</text>'
+     + '<text class="graduation" x="'+(L-32)+'" y="'+(H-2)+'">16 kHz</text>';
   svg.setAttribute("viewBox", "0 0 " + L + " " + H);
   svg.innerHTML = h;
 }
