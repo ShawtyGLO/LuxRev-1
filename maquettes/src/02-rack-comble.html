@@ -1,0 +1,144 @@
+<title>LuxRev-1 — variante rack comblé</title>
+<link rel="stylesheet" href="commun.css">
+<style>
+/* ------------------------------------------------------------------
+   VARIANTE 02 — même format large que la 01, mais l'espace mort sous
+   les boutons est occupé.
+
+   Remarque de l'utilisateur (2026-09-07) : « en version large on perd
+   beaucoup de place qui pourrait être plus intelligemment utilisée, il
+   n'y a rien en dessous des knobs ». Cette variante est la réponse
+   MINIMALE : on ne bouge pas la mise en page validée, on remplit.
+
+   Ce qui remplit n'est pas un décor : c'est l'enveloppe RÉELLEMENT
+   MESURÉE du programme sélectionné, tirée de _proto/mesures/.
+   ------------------------------------------------------------------ */
+.panneau{width:min(1000px,100%)}
+.haut{display:flex; align-items:stretch; gap:20px; padding:20px 26px 0; position:relative; z-index:2}
+.choix{width:308px; flex:none; padding:11px 12px; display:flex; flex-direction:column; gap:8px}
+.choix-haut{display:flex; align-items:baseline; gap:10px}
+.choix-haut .titre-prog{margin-left:auto}
+.commandes{display:flex; gap:12px; flex:1; justify-content:space-between; align-items:flex-start}
+
+.bas{display:flex; gap:20px; padding:16px 26px 22px; position:relative; z-index:2; align-items:stretch}
+.analyse{flex:1; padding:10px 12px 8px; display:flex; flex-direction:column; gap:6px}
+.analyse-haut{display:flex; align-items:baseline; gap:12px}
+.analyse svg{width:100%; height:78px; display:block}
+.cote{width:308px; flex:none; display:flex; flex-direction:column; gap:10px}
+.cote .verre{padding:10px 12px; display:flex; flex-direction:column; gap:7px}
+.legende{font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--lueur-faible)}
+</style>
+
+<div class="options">
+  <button id="skin">Voir la version claire</button>
+  <button id="reset">Réglages d'usine</button>
+  <a href="01-rack-large.html">01 — rack large</a>
+  <a href="03-remote.html">03 — remote</a>
+</div>
+
+<div class="panneau">
+  <div class="entete">
+    <div class="temoin"></div>
+    <div class="marque">LuxRev<span>-1</span></div>
+    <div class="sous-marque">Digital Reverberator</div>
+  </div>
+  <div class="bande"></div>
+
+  <div class="haut">
+    <div class="choix verre">
+      <div class="choix-haut">
+        <div class="rang" id="rang">Program 07</div>
+        <div class="titre-prog" id="nom-prog">Hall B</div>
+      </div>
+      <div class="grille" id="grille"></div>
+    </div>
+    <div class="commandes" id="commandes"></div>
+  </div>
+
+  <div class="bas">
+    <div class="cote">
+      <div class="verre">
+        <div class="lecture">
+          <span id="param">Decay</span>
+          <div class="jauge"><i id="jauge"></i></div>
+          <b id="param-val">2.60 s</b>
+        </div>
+      </div>
+      <div class="verre" style="flex:1">
+        <div class="legende">Réponse mesurée · 125 Hz → 16 kHz</div>
+        <svg class="spectre" id="spectre"></svg>
+      </div>
+    </div>
+    <div class="analyse verre">
+      <div class="analyse-haut">
+        <div class="legende">Décroissance mesurée sur le LXP-1</div>
+        <div class="stats" style="margin-left:auto">
+          <div>T60 <b id="s-t60">—</b></div>
+        </div>
+        <div class="stats"><div>Corrélation L/R <b id="s-cor">—</b></div></div>
+        <div class="stats"><div>Amortissement HF <b id="s-hf">—</b></div></div>
+      </div>
+      <svg id="courbe"></svg>
+    </div>
+  </div>
+</div>
+
+<p class="note">
+  <b>Variante 02 — le format large, comblé.</b> La mise en page validée ne bouge pas ; le bas
+  du panneau reçoit ce qui manquait. ⚠️ Ce n'est pas de la décoration : la courbe est
+  l'enveloppe <i>réellement mesurée</i> du programme sélectionné, extraite de
+  <code>_proto/mesures/</code>, et le trait pointillé marque le temps de mélange mesuré.
+  C'est ce qui distingue cet écran d'un sélecteur de presets — il montre que les douze
+  programmes sont des <i>modèles mesurés</i>, y compris ce qu'ils ont d'atypique : le plateau
+  de <b>Gate</b>, la montée d'<b>Inverse</b>.
+</p>
+
+<script src="mesures.js"></script>
+<script src="commun.js"></script>
+<script>
+function montrer(c, v){
+  document.getElementById("param").textContent = c.nom;
+  document.getElementById("param-val").textContent = c.fmt(v);
+  const t  = (v - c.min)/(c.max - c.min);
+  const tc = (c.centre === undefined) ? 0 : (c.centre - c.min)/(c.max - c.min);
+  const j = document.getElementById("jauge");
+  j.style.left  = (Math.min(t,tc)*100) + "%";
+  j.style.width = (Math.abs(t-tc)*100) + "%";
+}
+
+const cmds = {}, zone = document.getElementById("commandes");
+COMMANDES.forEach(function(c){ const o = fabrique(c, montrer); cmds[c.id] = o; zone.appendChild(o.bloc); });
+
+let iProg = 6;
+const grille = document.getElementById("grille");
+PROGRAMMES.forEach(function(nom, i){
+  const b = document.createElement("button");
+  b.textContent = nom; b.setAttribute("aria-pressed","false");
+  b.addEventListener("click", function(){ iProg = i; posePro(); });
+  grille.appendChild(b);
+});
+function posePro(){
+  const nom = PROGRAMMES[iProg], m = MESURES[nom];
+  document.getElementById("nom-prog").textContent = nom;
+  document.getElementById("rang").textContent = "Program " + String(iProg+1).padStart(2,"0");
+  Array.prototype.forEach.call(grille.children, function(b,i){ b.setAttribute("aria-pressed", String(i===iProg)); });
+  const u = USINE[nom];
+  cmds.decay.set(u[0]); cmds.delay.set(u[1]);
+  montrer(COMMANDES[0], u[0]);
+  courbe(document.getElementById("courbe"), nom);
+  spectre(document.getElementById("spectre"), nom);
+  document.getElementById("s-t60").textContent = m.t60.toFixed(2) + " s";
+  document.getElementById("s-cor").textContent = m.cor.toFixed(2);
+  document.getElementById("s-hf").textContent  = m.hf.toFixed(2);
+}
+posePro();
+
+document.getElementById("skin").addEventListener("click", function(e){
+  const clair = document.documentElement.getAttribute("data-skin") === "clair";
+  document.documentElement.setAttribute("data-skin", clair ? "" : "clair");
+  e.target.textContent = clair ? "Voir la version claire" : "Revenir à la version sombre";
+});
+document.getElementById("reset").addEventListener("click", function(){
+  COMMANDES.forEach(function(c){ cmds[c.id].def(); }); posePro();
+});
+</script>

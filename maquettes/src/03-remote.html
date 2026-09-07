@@ -1,0 +1,148 @@
+<title>LuxRev-1 — variante remote</title>
+<link rel="stylesheet" href="commun.css">
+<style>
+/* ------------------------------------------------------------------
+   VARIANTE 03 — format « remote ».
+
+   Justification de l'utilisateur (2026-09-07) : « on peut se permettre
+   une forme plus user friendly, car Lexicon faisait des remote
+   controllers de leurs racks, donc on n'est pas obligé de faire quelque
+   chose de 100 % répliqué ».
+
+   C'est l'argument qui débloque tout : le MRC EXISTE, il est signé
+   Lexicon, et il ne ressemble pas à un rack. On peut donc quitter la
+   barre horizontale sans quitter la marque — ce n'est pas une trahison
+   du modèle, c'est l'autre objet de la même famille.
+
+   Conséquence de forme : plus haut que large, l'écran domine, et les
+   boutons sont dessous — la disposition d'une télécommande, pas d'une
+   face avant de rack.
+   ------------------------------------------------------------------ */
+.panneau{width:min(700px,100%)}
+.corps{display:flex; flex-direction:column; gap:12px; padding:18px 24px 22px; position:relative; z-index:2}
+
+.principal{padding:12px 14px 11px; display:flex; flex-direction:column; gap:9px}
+.principal-haut{display:flex; align-items:baseline; gap:12px}
+.principal-haut .titre-prog{margin-left:auto}
+.courbe{width:100%; height:96px; display:block}
+.mesures{display:flex; gap:16px; padding-top:8px; border-top:1px solid rgba(99,198,232,.16)}
+.mesures .stats{flex:1}
+.legende{font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--lueur-faible)}
+
+.grille{grid-template-columns:repeat(4,1fr)}
+.commandes{display:flex; gap:10px; justify-content:space-between; padding-top:4px}
+.pied{padding:9px 14px}
+</style>
+
+<div class="options">
+  <button id="skin">Voir la version claire</button>
+  <button id="reset">Réglages d'usine</button>
+  <a href="01-rack-large.html">01 — rack large</a>
+  <a href="02-rack-comble.html">02 — rack comblé</a>
+</div>
+
+<div class="panneau">
+  <div class="entete">
+    <div class="temoin"></div>
+    <div class="marque">LuxRev<span>-1</span></div>
+    <div class="sous-marque">Digital Reverberator</div>
+  </div>
+  <div class="bande"></div>
+
+  <div class="corps">
+    <div class="principal verre">
+      <div class="principal-haut">
+        <div class="rang" id="rang">Program 07</div>
+        <div class="titre-prog" id="nom-prog">Hall B</div>
+      </div>
+      <svg class="courbe" id="courbe"></svg>
+      <div class="mesures">
+        <div class="stats">
+          <div>T60 mesuré <b id="s-t60">—</b></div>
+          <div>Mélange <b id="s-mel">—</b></div>
+        </div>
+        <div class="stats">
+          <div>Corrélation L/R <b id="s-cor">—</b></div>
+          <div>Amortissement HF <b id="s-hf">—</b></div>
+        </div>
+        <div class="stats" style="flex:1.4">
+          <div class="legende">Réponse 125 Hz → 16 kHz</div>
+          <svg class="spectre" id="spectre"></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="grille" id="grille"></div>
+
+    <div class="commandes" id="commandes"></div>
+
+    <div class="pied verre">
+      <div class="lecture">
+        <span id="param">Decay</span>
+        <div class="jauge"><i id="jauge"></i></div>
+        <b id="param-val">2.60 s</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="note">
+  <b>Variante 03 — le format remote.</b> Lexicon a fabriqué des télécommandes pour ses racks :
+  le <b>MRC</b> existe, il est signé Lexicon, et il ne ressemble pas à une face avant. On peut
+  donc quitter la barre horizontale <i>sans quitter la marque</i> — ce n'est pas une trahison
+  du modèle, c'est l'autre objet de la même famille. L'écran domine, les commandes sont
+  dessous, et rien n'est laissé vide. ⚠️ La courbe et les chiffres sont les mesures
+  <i>réelles</i> du programme, extraites de <code>_proto/mesures/</code> : c'est ce qui dit que
+  les douze programmes sont des <b>modèles mesurés</b> et non des presets.
+</p>
+
+<script src="mesures.js"></script>
+<script src="commun.js"></script>
+<script>
+function montrer(c, v){
+  document.getElementById("param").textContent = c.nom;
+  document.getElementById("param-val").textContent = c.fmt(v);
+  const t  = (v - c.min)/(c.max - c.min);
+  const tc = (c.centre === undefined) ? 0 : (c.centre - c.min)/(c.max - c.min);
+  const j = document.getElementById("jauge");
+  j.style.left  = (Math.min(t,tc)*100) + "%";
+  j.style.width = (Math.abs(t-tc)*100) + "%";
+}
+
+const cmds = {}, zone = document.getElementById("commandes");
+COMMANDES.forEach(function(c){ const o = fabrique(c, montrer); cmds[c.id] = o; zone.appendChild(o.bloc); });
+
+let iProg = 6;
+const grille = document.getElementById("grille");
+PROGRAMMES.forEach(function(nom, i){
+  const b = document.createElement("button");
+  b.textContent = nom; b.setAttribute("aria-pressed","false");
+  b.addEventListener("click", function(){ iProg = i; posePro(); });
+  grille.appendChild(b);
+});
+function posePro(){
+  const nom = PROGRAMMES[iProg], m = MESURES[nom];
+  document.getElementById("nom-prog").textContent = nom;
+  document.getElementById("rang").textContent = "Program " + String(iProg+1).padStart(2,"0");
+  Array.prototype.forEach.call(grille.children, function(b,i){ b.setAttribute("aria-pressed", String(i===iProg)); });
+  const u = USINE[nom];
+  cmds.decay.set(u[0]); cmds.delay.set(u[1]);
+  montrer(COMMANDES[0], u[0]);
+  courbe(document.getElementById("courbe"), nom);
+  spectre(document.getElementById("spectre"), nom);
+  document.getElementById("s-t60").textContent = m.t60.toFixed(2) + " s";
+  document.getElementById("s-mel").textContent = Math.round(m.mel) + " ms";
+  document.getElementById("s-cor").textContent = m.cor.toFixed(2);
+  document.getElementById("s-hf").textContent  = m.hf.toFixed(2);
+}
+posePro();
+
+document.getElementById("skin").addEventListener("click", function(e){
+  const clair = document.documentElement.getAttribute("data-skin") === "clair";
+  document.documentElement.setAttribute("data-skin", clair ? "" : "clair");
+  e.target.textContent = clair ? "Voir la version claire" : "Revenir à la version sombre";
+});
+document.getElementById("reset").addEventListener("click", function(){
+  COMMANDES.forEach(function(c){ cmds[c.id].def(); }); posePro();
+});
+</script>
