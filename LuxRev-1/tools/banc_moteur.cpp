@@ -69,6 +69,20 @@ int main (int argc, char** argv)
     // deterministes et comparables au bit pres : c'est ce qui permet de dire si
     // un ecart de timbre vient du tirage aleatoire ou d'une faute de portage.
     const float mod = (argc > 4) ? (float) std::atof (argv[4]) : 1.0f;
+    // 1 = on court-circuite le tank : on ne mesure plus que la chaine de
+    // conversion. C'est ce qui permet de dire OU se loge un ecart de timbre.
+    const int chaine = (argc > 5) ? std::atoi (argv[5]) : 0;   // 1 = sans tank, 2 = sonde interne
+    // 0 = pas de quantification, pour sortir le dither de la comparaison.
+    const int bits = (argc > 6) ? std::atoi (argv[6]) : 16;
+    // 0 = impulsion, 1 = bruit deterministe.
+    //
+    // ⚠️ L'impulsion est un MAUVAIS signal de comparaison ici. Le bloqueur
+    // d'ordre zero maintient chaque echantillon jusqu'au suivant : la reponse a
+    // une impulsion depend donc de la PHASE de cette impulsion par rapport a
+    // l'horloge interne de 31,25 kHz. Mesure faite : decaler l'impulsion de 300
+    // echantillons deplace le spectre de 10 dB. Un bruit stationnaire moyenne
+    // toutes les phases et donne une mesure stable.
+    const int signal = (argc > 7) ? std::atoi (argv[7]) : 0;
 
     const int n = (int) (kFs * duree);
     std::vector<float> x ((size_t) n, 0.0f), g ((size_t) n), d ((size_t) n);
@@ -85,11 +99,30 @@ int main (int argc, char** argv)
         Reglages r = reglagesDe (p);
         r = macroColor (r, color, p);
         r.modProfondeur *= mod;
+        r.bits = bits;
+        m.contournerTank = (chaine != 0);
+        std::vector<float> sonde;
+        if (chaine == 2) { sonde.reserve ((size_t) n); m.sondeInterne = &sonde; }
         m.appliquer (r, &p);
         m.vider();
 
         std::fill (x.begin(), x.end(), 0.0f);
-        x[0] = 1.0f;
+        if (signal == 0)
+        {
+            x[0] = 1.0f;
+        }
+        else
+        {
+            // congruentiel lineaire de Numerical Recipes — reproduit a
+            // l'identique cote Python, pour que les deux moteurs recoivent
+            // exactement le meme signal
+            unsigned int e = 12345u;
+            for (int k = 0; k < n; ++k)
+            {
+                e = e * 1664525u + 1013904223u;
+                x[(size_t) k] = 0.25f * ((float) ((e >> 8) & 0xFFFFFFu) / 8388608.0f - 1.0f);
+            }
+        }
         const auto t0 = std::chrono::steady_clock::now();
         // par blocs, comme un hote : cela verifie aussi que l'etat traverse
         // correctement les frontieres de bloc
@@ -110,7 +143,10 @@ int main (int argc, char** argv)
                                                                        std::abs (d[(size_t) k])));
         std::string nom (p.nom);
         for (auto& c : nom) if (c == ' ') c = '_';
-        ecrireWav (dossier + "/CPP_" + nom + ".wav", g, d, kFs);
+                if (chaine == 2)
+            ecrireWav (dossier + "/INTERNE_" + nom + ".wav", sonde, sonde, kFsInterne);
+        else
+            ecrireWav (dossier + (chaine ? "/CHAINE_" : (signal ? "/BRUIT_" : "/CPP_")) + nom + ".wav", g, d, kFs);
         std::printf ("  %-10s crete %.4f  latence %3d ech.  CPU %5.2f %% d'un coeur\n",
                      p.nom, crete, m.latenceEchantillons(), charge);
     }

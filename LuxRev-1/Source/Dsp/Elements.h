@@ -39,6 +39,15 @@ inline constexpr int kNFdn = 8;
 inline constexpr double kEmphaseT1 = 68.0e-6;
 inline constexpr double kEmphaseT2 = kEmphaseT1 / 3.33;
 
+// ⚠️ Le tank calcule en DOUBLE, comme le prototype Python.
+//
+// Ce n'est pas de la prudence de principe : dans un reseau qui recircule avec
+// des gains proches de 0,999, l'erreur d'arrondi repasse par la boucle a chaque
+// tour et s'accumule. Mesure contre le prototype, le simple float coutait 0,2 a
+// 1,6 dB dans le grave selon le programme — un ecart qui ne se rattachait a
+// aucun parametre, signature d'une erreur numerique et non d'un etage faux.
+using Ech = double;
+
 inline int transpose (int n, double fs, double taille = 1.0)
 {
     return std::max ((int) std::lround (n * fs / kFsDattorro * taille), 4);
@@ -61,7 +70,7 @@ public:
     void preparer (int nMax)
     {
         capacite = std::max (nMax, 1);
-        buf.assign ((size_t) capacite, 0.0f);
+        buf.assign ((size_t) capacite, 0.0);
         taille = capacite;
         i = 0;
     }
@@ -73,18 +82,18 @@ public:
         if (m != taille) { taille = m; i = 0; }
     }
 
-    void vider() { std::fill (buf.begin(), buf.end(), 0.0f); i = 0; }
+    void vider() { std::fill (buf.begin(), buf.end(), 0.0); i = 0; }
 
-    inline float pousser (float x) noexcept
+    inline Ech pousser (Ech x) noexcept
     {
-        const float y = buf[(size_t) i];
+        const Ech y = buf[(size_t) i];
         buf[(size_t) i] = x;
         if (++i >= taille) i = 0;
         return y;
     }
 
 private:
-    std::vector<float> buf;
+    std::vector<Ech> buf;
     int taille = 1, capacite = 1, i = 0;
 };
 
@@ -101,30 +110,30 @@ public:
     void preparer (int n, float coef)
     {
         taille = std::max (n, 1);
-        buf.assign ((size_t) taille, 0.0f);
+        buf.assign ((size_t) taille, 0.0);
         i = 0;
         k = coef;
     }
 
     /** Le coefficient bouge avec Diffusion ; la longueur, elle, ne depend pas de
         `taille` — le diffuseur d'entree est transpose une fois pour toutes. */
-    void poserCoef (float coef) noexcept { k = coef; }
+    void poserCoef (double coef) noexcept { k = coef; }
 
-    void vider() { std::fill (buf.begin(), buf.end(), 0.0f); i = 0; }
+    void vider() { std::fill (buf.begin(), buf.end(), 0.0); i = 0; }
 
-    inline float traiter (float x) noexcept
+    inline Ech traiter (Ech x) noexcept
     {
-        const float d = buf[(size_t) i];
-        const float w = x + k * d;
+        const Ech d = buf[(size_t) i];
+        const Ech w = x + k * d;
         buf[(size_t) i] = w;
         if (++i >= taille) i = 0;
         return d - k * w;
     }
 
 private:
-    std::vector<float> buf;
+    std::vector<Ech> buf;
     int taille = 1, i = 0;
-    float k = 0.0f;
+    Ech k = 0.0;
 };
 
 //==============================================================================
@@ -151,7 +160,7 @@ public:
     {
         margeMax = std::max (marge, 0);
         taille   = std::max (nominalMax, 4) + margeMax + 4;
-        buf.assign ((size_t) taille, 0.0f);
+        buf.assign ((size_t) taille, 0.0);
         nominal = std::max (nominalMax, 4);
         i = 0;
         yi = 0.0f;
@@ -178,20 +187,20 @@ public:
             prises[k] = std::max ((int) (nominal * fractions[k]), 1);
     }
 
-    void vider() { std::fill (buf.begin(), buf.end(), 0.0f); i = 0; yi = 0.0f; }
+    void vider() { std::fill (buf.begin(), buf.end(), 0.0); i = 0; yi = 0.0; }
 
-    inline float traiter (float x, float decalage) noexcept
+    inline Ech traiter (Ech x, double decalage) noexcept
     {
-        const float p = (float) nominal + decalage;
-        int   i0 = (int) p;
-        float f  = p - (float) i0;
-        if (f < 0.5f) { i0 -= 1; f += 1.0f; }   // l'allpass du 1er ordre se tient
+        const double p = (double) nominal + decalage;
+        int    i0 = (int) p;
+        double f  = p - (double) i0;
+        if (f < 0.5) { i0 -= 1; f += 1.0; }     // l'allpass du 1er ordre se tient
                                                 // mieux pour f dans [0,5 ; 1,5)
         int a = (i - i0) % taille; if (a < 0) a += taille;
         int b = (i - i0 - 1) % taille; if (b < 0) b += taille;
 
-        const float eta = (1.0f - f) / (1.0f + f);
-        const float d = eta * buf[(size_t) a] + buf[(size_t) b] - eta * yi;
+        const double eta = (1.0 - f) / (1.0 + f);
+        const Ech d = eta * buf[(size_t) a] + buf[(size_t) b] - eta * yi;
         yi = d;
 
         buf[(size_t) i] = x;
@@ -202,10 +211,10 @@ public:
     int nominalEch() const noexcept { return nominal; }
 
 private:
-    std::vector<float> buf;
+    std::vector<Ech> buf;
     int taille = 8, i = 0, nominal = 4, margeMax = 0;
     int prises[kNPrises] { 1, 1, 1, 1, 1, 1 };
-    float yi = 0.0f;
+    Ech yi = 0.0;
 };
 
 //==============================================================================

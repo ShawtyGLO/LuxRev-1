@@ -167,6 +167,20 @@ public:
     static constexpr int kNPrisesFf = 12;
     static constexpr int kSlack = 4;      // avance de l'anneau interne, en echantillons
 
+    /** Court-circuite le tank : seule la chaine de conversion travaille.
+
+        ⚠️ Crochet de VERIFICATION, pas une fonctionnalite. Il sert a repondre a
+        une question qu'on ne peut pas trancher en regardant le rendu complet :
+        un ecart de timbre vient-il de la conversion (emphase, anti-repliement,
+        decimation, bloqueur, correction sinc, mur) ou du reseau lui-meme ?
+        Sans ce partage, on corrige au hasard. */
+    bool contournerTank = false;
+
+    /** Recueille le signal a la frequence INTERNE, juste apres decimation.
+        Crochet de verification : il coupe la chaine en deux, ce qui permet de
+        dire si un ecart vient de la descente vers 31,25 kHz ou de la remontee. */
+    std::vector<float>* sondeInterne = nullptr;
+
     //--------------------------------------------------------------------------
     /** Alloue tout, pour le pire cas. Jamais appele depuis le fil audio. */
     void preparer (double sampleRateHote)
@@ -214,7 +228,7 @@ public:
             injections[(size_t) k].preparer (std::max ((int) (tauMax * 0.95), 1));
 
         ffN = (int) (kFenetreDiffMaxMs * 1e-3 * fs) + 2;
-        ffBuf.assign ((size_t) ffN, 0.0f);
+        ffBuf.assign ((size_t) ffN, 0.0);
 
         vider();
     }
@@ -234,9 +248,9 @@ public:
         for (auto& d : diff)       d.vider();
         for (auto& l : lignes)     l.vider();
         for (auto& d : injections) d.vider();
-        std::fill (ffBuf.begin(), ffBuf.end(), 0.0f); ffI = 0;
-        for (int k = 0; k < kNFdn; ++k) { etats[k] = sorties[k] = eBass[k] = lfoEtat[k] = 0.0f; }
-        eTreble = fbEtat = sL = sR = hL = hR = 0.0f;
+        std::fill (ffBuf.begin(), ffBuf.end(), 0.0); ffI = 0;
+        for (int k = 0; k < kNFdn; ++k) { etats[k] = sorties[k] = eBass[k] = lfoEtat[k] = 0.0; }
+        eTreble = fbEtat = sL = sR = hL = hR = 0.0;
     }
 
     //--------------------------------------------------------------------------
@@ -269,7 +283,7 @@ public:
         // Signes alternes sur les prises : deux sorties decorrelees sans ajouter
         // de retard — la mesure donne une correlation L/R nulle sur les 14 IR.
         for (int k = 0; k < nLignes; ++k)
-            signes[k] = ((k / 2) % 2 == 0) ? 1.0f : -1.0f;
+            signes[k] = ((k / 2) % 2 == 0) ? 1.0 : -1.0;
 
         // Injection retardee, une par ligne (brevet Jot US5491754, FIG. 2d, bloc
         // « FIRST ECHOS CONTROL »). L'entree n'arrive pas simultanement dans les
@@ -290,8 +304,8 @@ public:
         const float f = std::clamp (reg.forme, 0.0f, 1.0f);
         for (int k = 0; k < nLignes; ++k)
         {
-            const float u = (float) k / (float) std::max (nLignes - 1, 1);
-            bInj[k] = std::max (1.0f - std::abs (u - f) * 2.2f, 0.03f);
+            const double u = (double) k / (double) std::max (nLignes - 1, 1);
+            bInj[k] = std::max (1.0 - std::abs (u - (double) f) * 2.2, 0.03);
         }
 
         // Banc de retards en PARALLELE, douze prises sur la fenetre de diffusion.
@@ -304,7 +318,7 @@ public:
             // arrivees precoces attenuees, donc enveloppe qui monte : dans une
             // salle, la densite d'arrivees CROIT avec le temps.
             for (int k = 0; k < kNPrisesFf; ++k)
-                poidsPrises[k] = (float) std::pow (10.0,
+                poidsPrises[k] = std::pow (10.0,
                     -reg.pentePrises * (kNPrisesFf - 1 - k) / (kNPrisesFf - 1) / 20.0);
         }
 
@@ -370,11 +384,14 @@ public:
             const float xi = lireInterpole (posLecture);
             posLecture += ratio;
 
-            float g = 0.0f, d = 0.0f;
-            tank (quantifier (xi, reg.bits, bruit), g, d);         // ADC
+            const float q = quantifier (xi, reg.bits, bruit);      // ADC
+            if (sondeInterne != nullptr) sondeInterne->push_back (q);
+            Ech g = 0.0, d = 0.0;
+            if (contournerTank) { g = d = q; }
+            else                { tank (q, g, d); }
 
-            anneauL[(size_t) (ecritsInterne & kMasque)] = quantifier (g, reg.bits, bruit);
-            anneauR[(size_t) (ecritsInterne & kMasque)] = quantifier (d, reg.bits, bruit);
+            anneauL[(size_t) (ecritsInterne & kMasque)] = quantifier ((float) g, reg.bits, bruit);
+            anneauR[(size_t) (ecritsInterne & kMasque)] = quantifier ((float) d, reg.bits, bruit);
             ++ecritsInterne;                                        // DAC
         }
 
@@ -445,7 +462,7 @@ private:
         les deux etaient confondus dans la version figure-8, et il fallait
         choisir entre un spectre juste et une montee juste.
     */
-    inline void tank (float x, float& gaucheOut, float& droiteOut) noexcept
+    inline void tank (Ech x, Ech& gaucheOut, Ech& droiteOut) noexcept
     {
         const int NL = nLignes;
 
@@ -454,16 +471,16 @@ private:
         // and Diffusion and before the reverb », et « a feedback loop around
         // Treble, Diffusion, and Predelay ». Le prototype avait d'abord l'inverse,
         // et la boucle manquait entierement.
-        const float u = x + fbEtat * reg.predelaiFb;
+        const Ech u = x + fbEtat * reg.predelaiFb;
         eTreble += kTreble * (u - eTreble);
-        float v = eTreble;
+        Ech v = eTreble;
         for (int k = 0; k < nDiff; ++k) v = diff[(size_t) k].traiter (v);
         v = predelai.pousser (v);
         fbEtat = v;
 
-        float somme = 0.0f;
+        Ech somme = 0.0;
         for (int k = 0; k < NL; ++k) somme += sorties[k];
-        const float fMix = reg.mixage * 2.0f / (float) NL * somme;
+        const Ech fMix = reg.mixage * 2.0 / (double) NL * somme;
 
         for (int k = 0; k < NL; ++k)
         {
@@ -473,12 +490,12 @@ private:
             // entendre sa periode ; un bruit lent desaccorde les modes sans
             // jamais se repeter.
             lfoEtat[k] += aLfo * (bruit.gaussien() - lfoEtat[k]);
-            const float lfo = std::clamp (lfoEtat[k] * gainLfo, -2.5f, 2.5f)
-                                * profondeur * 0.4f + profondeur * 0.5f;
+            const double lfo = std::clamp (lfoEtat[k] * gainLfo, -2.5, 2.5)
+                                * profondeur * 0.4 + profondeur * 0.5;
 
-            const float inj = bInj[k] * injections[(size_t) k].pousser (v);
-            const float e = (sorties[k] - fMix) + inj;
-            const float d = lignes[(size_t) k].traiter (e, lfo);
+            const Ech inj = bInj[k] * injections[(size_t) k].pousser (v);
+            const Ech e = (sorties[k] - fMix) + inj;
+            const Ech d = lignes[(size_t) k].traiter (e, lfo);
 
             // h_i(Z) du brevet Jot : passe-bas du 1er ordre a gain continu g_dc et
             // pente propre a la ligne. Gain ET pente proportionnels a la longueur,
@@ -492,7 +509,7 @@ private:
             sorties[k] = etats[k] + gainBass[k] * eBass[k];
         }
 
-        float gch = 0.0f, drt = 0.0f;
+        Ech gch = 0.0, drt = 0.0;
         for (int k = 0; k + 1 < NL; k += 2)
         {
             gch += signes[k]     * sorties[k];
@@ -511,7 +528,7 @@ private:
         for (int t = 0; t < kNPrisesFf; ++t)
         {
             int j = ffI - ffTaps[t]; if (j < 0) j += ffN;
-            const float e = ffBuf[(size_t) j] * poidsPrises[t];
+            const Ech e = ffBuf[(size_t) j] * poidsPrises[t];
             if (t & 1) gch += reg.gainPrises * e;
             else       drt += reg.gainPrises * e;
         }
@@ -525,7 +542,7 @@ private:
         sL += lpOut * (gch - sL);
         sR += lpOut * (drt - sR);
 
-        if (kHp > 0.0f)                    // « Low Cut Filter »
+        if (kHp > 0.0)                     // « Low Cut Filter »
         {
             hL += kHp * (sL - hL);
             hR += kHp * (sR - hR);
@@ -550,7 +567,7 @@ private:
         const double rb = std::clamp ((double) reg.ratioBass, 0.25, 4.0);
         kCross = coefLp (reg.crossBassHz, fs);
 
-        for (int k = 0; k < kNFdn; ++k) { gains[k] = 0.0f; bAbs[k] = 0.0f; gainBass[k] = 0.0f; }
+        for (int k = 0; k < kNFdn; ++k) { gains[k] = 0.0; bAbs[k] = 0.0; gainBass[k] = 0.0; }
         if (reg.t60S <= 0.0f) return;
 
         for (int k = 0; k < nLignes; ++k)
@@ -560,12 +577,12 @@ private:
             const double gHf = std::min (std::pow (10.0, -3.0 * L / (t60Hf * fs)), 0.9999);
             const double rap = std::clamp (gHf / std::max (gDc, 1e-12), 1e-6, 0.999);
 
-            gains[k] = (float) gDc;
-            bAbs[k]  = (float) std::clamp ((1.0 - rap) / (1.0 + rap), -0.95, 0.95);
+            gains[k] = gDc;
+            bAbs[k]  = std::clamp ((1.0 - rap) / (1.0 + rap), -0.95, 0.95);
 
             const double gLf = std::min (
                 std::pow (10.0, -3.0 * L / (std::max ((double) reg.t60S * rb, 1e-3) * fs)), 0.9999);
-            gainBass[k] = (float) (gLf / std::max (gDc, 1e-12) - 1.0);
+            gainBass[k] = gLf / std::max (gDc, 1e-12) - 1.0;
         }
     }
 
@@ -588,17 +605,17 @@ private:
     Allpass diff[4];
     LigneModulee lignes[kNFdn];
     Delai injections[kNFdn];
-    std::vector<float> ffBuf;
+    std::vector<Ech> ffBuf;
     int ffTaps[kNPrisesFf] {};
-    float poidsPrises[kNPrisesFf] {};
+    double poidsPrises[kNPrisesFf] {};
     int ffN = 8, ffI = 0, nLignes = kNFdn, nDiff = 4;
 
-    float signes[kNFdn] {}, bInj[kNFdn] {}, gains[kNFdn] {}, bAbs[kNFdn] {}, gainBass[kNFdn] {};
-    float etats[kNFdn] {}, sorties[kNFdn] {}, eBass[kNFdn] {}, lfoEtat[kNFdn] {};
+    double signes[kNFdn] {}, bInj[kNFdn] {}, gains[kNFdn] {}, bAbs[kNFdn] {}, gainBass[kNFdn] {};
+    Ech etats[kNFdn] {}, sorties[kNFdn] {}, eBass[kNFdn] {}, lfoEtat[kNFdn] {};
 
-    float kTreble = 1.0f, kCross = 0.0f, lpOut = 1.0f, kHp = 0.0f;
-    float profondeur = 0.0f, aLfo = 0.0f, gainLfo = 1.0f;
-    float eTreble = 0.0f, fbEtat = 0.0f, sL = 0.0f, sR = 0.0f, hL = 0.0f, hR = 0.0f;
+    double kTreble = 1.0, kCross = 0.0, lpOut = 1.0, kHp = 0.0;
+    double profondeur = 0.0, aLfo = 0.0, gainLfo = 1.0;
+    Ech eTreble = 0.0, fbEtat = 0.0, sL = 0.0, sR = 0.0, hL = 0.0, hR = 0.0;
 
     Bruit bruit { 20260907u };
 };
