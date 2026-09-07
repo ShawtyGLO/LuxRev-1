@@ -129,6 +129,7 @@ function posePro(){
   Array.prototype.forEach.call(grille.children, function(b,i){ b.setAttribute("aria-pressed", String(i===iProg)); });
   const u = USINE[nom];
   cmds.decay.set(u[0]); cmds.delay.set(u[1]);
+  cmds.decay.poseDefaut(u[0]); cmds.delay.poseDefaut(u[1]);
   montrer(COMMANDES[0], u[0]);
   courbe(document.getElementById("courbe"), nom, etat);
   spectre(document.getElementById("spectre"), nom, etat);

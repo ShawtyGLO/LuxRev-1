@@ -64,10 +64,6 @@
         </div>
         <svg class="courbe" id="courbe"></svg>
         <div class="mesures">
-          <div class="stats">
-            <div>T60 mesuré <b id="s-t60">—</b></div>
-            <div>Mélange <b id="s-mel">—</b></div>
-          </div>
           <div class="bloc">
             <div class="legende">Stéréo</div>
             <svg class="cercles" id="cercles"></svg>
@@ -110,10 +106,15 @@
   (corrélation +1), deux disques imbriqués à la référence (corrélation 0), détachés au-delà.
   La figure dit ce que mesure la corrélation, sans chiffre à lire.
   <br><br>
-  <b>Headroom</b> à gauche de l'écran, quatre barres comme sur les unités Lexicon. La
-  quatrième est le plafond d'entrée du manuel (<b>+15 dBV</b>) : au-delà, l'étage d'entrée
-  écrête. <b>La diode et le titre sont un interrupteur invisible</b> — à l'arrêt, seuls la
-  diode et l'écran se grisent, le panneau reste.
+  <b>Headroom</b> à gauche de l'écran, quatre barres comme sur les unités Lexicon, le titre
+  collé au bandeau. La quatrième est le plafond d'entrée du manuel (<b>+15 dBV</b>) : au-delà,
+  l'étage d'entrée écrête. <b>La diode et le titre sont un interrupteur invisible</b> — à
+  l'arrêt, seuls la diode et l'écran se grisent, le panneau reste.
+  <br><br>
+  ⚠️ <b>Le double-clic ramène au réglage d'usine DU PROGRAMME</b>, pas à un défaut unique pour
+  tout le plugin. C'est le bon comportement : « Decay par défaut » ne veut rien dire dans
+  l'absolu — 0,6 s sur Gate, 2,6 s sur Hall B. Un défaut global ferait sortir du programme dès
+  qu'on annule un geste.
 </p>
 
 <script src="mesures.js"></script>
@@ -154,16 +155,15 @@ PROGRAMMES.forEach(function(nom, i){
   grille.appendChild(b);
 });
 function posePro(){
-  const nom = PROGRAMMES[iProg], m = MESURES[nom];
+  const nom = PROGRAMMES[iProg];
   document.getElementById("nom-prog").textContent = nom;
   document.getElementById("rang").textContent = "Program " + String(iProg+1).padStart(2,"0");
   Array.prototype.forEach.call(grille.children, function(b,i){ b.setAttribute("aria-pressed", String(i===iProg)); });
   const u = USINE[nom];
   cmds.decay.set(u[0]); cmds.delay.set(u[1]);
+  cmds.decay.poseDefaut(u[0]); cmds.delay.poseDefaut(u[1]);
   etat.decay = u[0]; etat.delay = u[1];
   montrer(COMMANDES[0], u[0]);
-  document.getElementById("s-t60").textContent = m.t60.toFixed(2) + " s";
-  document.getElementById("s-mel").textContent = Math.round(m.mel) + " ms";
 }
 posePro();
 

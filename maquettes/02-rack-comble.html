@@ -224,7 +224,7 @@ body{
    manuel (+15 dBV) — au-delà, l'étage d'entrée écrête. */
 .headroom{display:flex; flex-direction:column-reverse; gap:3px; justify-content:flex-start}
 .headroom i{
-  display:block; width:14px; height:9px; border-radius:1px;
+  display:block; width:15px; height:11px; border-radius:1px;
   background:color-mix(in srgb, var(--lueur) 11%, transparent);
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--lueur) 16%, transparent);
   transition:background .09s linear, box-shadow .09s linear;
@@ -234,10 +234,13 @@ body{
   box-shadow:0 0 6px color-mix(in srgb, var(--lueur) 55%, transparent);
 }
 .headroom i.chaud{background:#e5623c; box-shadow:0 0 7px rgba(229,98,60,.7)}
+/* ⚠️ Le titre doit toucher le bandeau, pas flotter le long de la colonne :
+   une étiquette qui court sur toute la hauteur pendant que les quatre témoins
+   sont tassés en bas ne se lit plus comme le nom du bandeau. */
 .etiq-vert{
   writing-mode:vertical-rl; transform:rotate(180deg);
   font-size:7.5px; letter-spacing:.24em; text-transform:uppercase;
-  color:var(--lueur-faible); align-self:center;
+  color:var(--lueur-faible);
 }
 
 /* ---------------- ON / OFF ----------------
@@ -412,6 +415,13 @@ function fabrique(c, montrer){
   bloc.append(et, b, val);
 
   let v = c.def;
+  /* ⚠️ Le double-clic ramène au réglage D'USINE DU PROGRAMME COURANT, pas à une
+     valeur unique pour tout le plugin. Demandé par l'utilisateur, et c'est le bon
+     comportement : Decay « par défaut » ne veut rien dire dans l'absolu — il vaut
+     0,6 s sur Gate et 2,6 s sur Hall B. Un défaut global reviendrait à sortir du
+     programme dès qu'on annule un geste. `defaut` est donc réécrit à chaque
+     changement de programme, par poseDefaut(). */
+  let defaut = c.def;
   function pose(afficher){
     const t = (v - c.min) / (c.max - c.min);
     b.style.setProperty("--angle", (A0 + t*(A1-A0)) + "deg");
@@ -442,9 +452,12 @@ function fabrique(c, montrer){
     v = Math.max(c.min, Math.min(c.max, v + d*c.pas*(e.shiftKey ? 1 : 10)));
     pose(true);
   });
-  b.addEventListener("dblclick", () => { v = c.def; pose(true); });
+  b.addEventListener("dblclick", () => { v = defaut; pose(true); });
 
-  return {bloc:bloc, set:x=>{ v=x; pose(false); }, def:()=>{ v=c.def; pose(false); }};
+  return {bloc:bloc,
+          set:x=>{ v = x; pose(false); },
+          poseDefaut:x=>{ defaut = x; },
+          def:()=>{ v = defaut; pose(false); }};
 }
 
 /* ---------------- la courbe, VIVANTE ----------------
@@ -621,7 +634,12 @@ function spectre(svg, nom, etat){
 function cercles(svg, etat){
   const L = 74, H = 30, R = 9.5;
   const w = etat ? etat.stereo/100 : 1;
-  const e = R * 1.37 * w;                   // 0 en mono, 1,37 R à la référence
+  /* Échelle revue le 2026-09-07 sur l'œil de l'utilisateur : « ce qui était à
+     50 %, je le verrais bien à 100 %, et le maximum comme si c'était à 75 % ».
+     L'écartement est donc divisé par deux — à la référence les deux disques
+     s'imbriquent nettement, et même au maximum ils se touchent encore. Ce qui
+     est fidèle : à 160 % la corrélation vaut −0,44, pas −1. */
+  const e = R * 0.65 * w;                   // 0 en mono, 0,65 R à la référence
   svg.setAttribute("viewBox", "0 0 " + L + " " + H);
   svg.innerHTML =
       '<circle class="oeil" cx="'+(L/2 - e).toFixed(1)+'" cy="'+(H/2)+'" r="'+R+'"/>'
@@ -677,6 +695,7 @@ function posePro(){
   Array.prototype.forEach.call(grille.children, function(b,i){ b.setAttribute("aria-pressed", String(i===iProg)); });
   const u = USINE[nom];
   cmds.decay.set(u[0]); cmds.delay.set(u[1]);
+  cmds.decay.poseDefaut(u[0]); cmds.delay.poseDefaut(u[1]);
   montrer(COMMANDES[0], u[0]);
   courbe(document.getElementById("courbe"), nom, etat);
   spectre(document.getElementById("spectre"), nom, etat);

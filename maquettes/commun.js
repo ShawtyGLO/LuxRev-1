@@ -57,6 +57,13 @@ function fabrique(c, montrer){
   bloc.append(et, b, val);
 
   let v = c.def;
+  /* ⚠️ Le double-clic ramène au réglage D'USINE DU PROGRAMME COURANT, pas à une
+     valeur unique pour tout le plugin. Demandé par l'utilisateur, et c'est le bon
+     comportement : Decay « par défaut » ne veut rien dire dans l'absolu — il vaut
+     0,6 s sur Gate et 2,6 s sur Hall B. Un défaut global reviendrait à sortir du
+     programme dès qu'on annule un geste. `defaut` est donc réécrit à chaque
+     changement de programme, par poseDefaut(). */
+  let defaut = c.def;
   function pose(afficher){
     const t = (v - c.min) / (c.max - c.min);
     b.style.setProperty("--angle", (A0 + t*(A1-A0)) + "deg");
@@ -87,9 +94,12 @@ function fabrique(c, montrer){
     v = Math.max(c.min, Math.min(c.max, v + d*c.pas*(e.shiftKey ? 1 : 10)));
     pose(true);
   });
-  b.addEventListener("dblclick", () => { v = c.def; pose(true); });
+  b.addEventListener("dblclick", () => { v = defaut; pose(true); });
 
-  return {bloc:bloc, set:x=>{ v=x; pose(false); }, def:()=>{ v=c.def; pose(false); }};
+  return {bloc:bloc,
+          set:x=>{ v = x; pose(false); },
+          poseDefaut:x=>{ defaut = x; },
+          def:()=>{ v = defaut; pose(false); }};
 }
 
 /* ---------------- la courbe, VIVANTE ----------------
@@ -266,7 +276,12 @@ function spectre(svg, nom, etat){
 function cercles(svg, etat){
   const L = 74, H = 30, R = 9.5;
   const w = etat ? etat.stereo/100 : 1;
-  const e = R * 1.37 * w;                   // 0 en mono, 1,37 R à la référence
+  /* Échelle revue le 2026-09-07 sur l'œil de l'utilisateur : « ce qui était à
+     50 %, je le verrais bien à 100 %, et le maximum comme si c'était à 75 % ».
+     L'écartement est donc divisé par deux — à la référence les deux disques
+     s'imbriquent nettement, et même au maximum ils se touchent encore. Ce qui
+     est fidèle : à 160 % la corrélation vaut −0,44, pas −1. */
+  const e = R * 0.65 * w;                   // 0 en mono, 0,65 R à la référence
   svg.setAttribute("viewBox", "0 0 " + L + " " + H);
   svg.innerHTML =
       '<circle class="oeil" cx="'+(L/2 - e).toFixed(1)+'" cy="'+(H/2)+'" r="'+R+'"/>'
