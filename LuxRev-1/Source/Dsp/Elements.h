@@ -326,29 +326,46 @@ private:
 };
 
 //==============================================================================
-/** Interpolateur a retard fractionnaire, sinus cardinal fenetre.
+/** Decimateur polyphase : il place l'echantillon au bon instant ET borne la bande.
 
-    ⚠️ Il remplace un Lagrange a 4 points, et ce n'etait pas un detail de qualite :
-    le Lagrange cubique s'affaisse dans l'aigu bien avant Nyquist. Mesure contre le
-    prototype, la descente vers 31,25 kHz coutait 2,2 dB entre 2 et 16 kHz,
-    systematiquement dans le meme sens. C'est exactement la famille d'erreur que
-    l'oreille attrape en premier sur ce projet — « pas assez de brillance » — et
-    qui a deja coute plusieurs tours au prototype.
+    ⚠️ Ce n'est pas un simple interpolateur, et c'est la correction la plus
+    importante du portage. Une premiere version se contentait d'interpoler, en
+    laissant l'anti-repliement au seul Butterworth d'ordre 6 a 15,2 kHz de la
+    machine. Mesure contre les IR d'origine, moyennee sur huit phases
+    d'impulsion : le moteur sortait alors 2,43 dB TROP BRILLANT a 16 kHz, la ou
+    le prototype tombe a 0,33 dB de la machine.
 
-    Table de phases precalculee : le cout en temps reel est de kTaps
-    multiplications par echantillon interne, soit environ 0,5 M op/s. Rien.
+    La coupure du noyau est donc posee a la frequence de Nyquist INTERNE
+    (15,625 kHz), pas a celle de l'hote. C'est la meme regle que
+    scipy.resample_poly, et c'est ce que le materiel fait : la bande est bornee
+    par ce qui precede l'echantillonneur, pas par ce qui le suit.
+
+    Table de phases precalculee : kTaps multiplications par echantillon interne,
+    soit environ 1 M op/s. Negligeable.
 */
-class InterpolateurSinc
+class Decimateur
 {
 public:
-    static constexpr int kTaps = 16;
+    // 64 points, pas 32 : a 32 la transition mordait avant 15,625 kHz et le
+    // moteur ressortait 1,0 dB trop sombre. scipy.resample_poly en emploie pres
+    // de 4000 — on ne peut pas se le payer en temps reel, mais 64 suffisent a
+    // ramener l'ecart dans le bruit de la mesure.
+    static constexpr int kTaps = 64;
     static constexpr int kPhases = 512;
 
-    void preparer()
+    /** `ratio` = fsHote / fsInterne. Au-dessus de 1, le noyau doit couper. */
+    void preparer (double ratio)
     {
-        if (! table.empty()) return;
+        const double fc = 0.5 / std::max (ratio, 1.0);      // coupure, en x fsHote
+        if (! table.empty() && std::abs (fc - coupure) < 1e-12) return;
+        coupure = fc;
         table.assign ((size_t) (kPhases * kTaps), 0.0f);
+
         constexpr int demi = kTaps / 2;
+        constexpr double pi = 3.14159265358979323846;
+        const double beta = 9.0;                            // Kaiser : ~ -90 dB
+        const double i0b = besselI0 (beta);
+
         for (int p = 0; p < kPhases; ++p)
         {
             const double frac = (double) p / kPhases;
@@ -356,42 +373,53 @@ public:
             for (int k = 0; k < kTaps; ++k)
             {
                 const double x = (double) (k - demi + 1) - frac;
-                const double s = (std::abs (x) < 1e-9) ? 1.0
-                                   : std::sin (3.14159265358979323846 * x)
-                                     / (3.14159265358979323846 * x);
-                // fenetre de Blackman : lobes secondaires assez bas pour que la
-                // bande utile reste plate a mieux que 0,05 dB
-                const double u = (double) k / (kTaps - 1);
-                const double w = 0.42 - 0.5 * std::cos (2.0 * 3.14159265358979323846 * u)
-                                      + 0.08 * std::cos (4.0 * 3.14159265358979323846 * u);
-                const double v = s * w;
+                const double a = 2.0 * fc * x;
+                const double s = (std::abs (a) < 1e-9) ? 1.0 : std::sin (pi * a) / (pi * a);
+                // fenetre de Kaiser centree sur le noyau, pas sur l'indice : le
+                // decalage fractionnaire deplace le centre effectif
+                const double u = std::clamp ((x + demi - 1.0) / (kTaps - 1.0), 0.0, 1.0);
+                const double r = 2.0 * u - 1.0;
+                const double w = besselI0 (beta * std::sqrt (std::max (1.0 - r * r, 0.0))) / i0b;
+                const double v = 2.0 * fc * s * w;
                 table[(size_t) (p * kTaps + k)] = (float) v;
                 somme += v;
             }
-            // gain unite en continu, phase par phase : sans ca l'interpolateur
-            // module legerement le niveau au rythme de la phase
+            // gain unite en continu, phase par phase — sinon l'interpolateur
+            // module le niveau au rythme de la phase
             if (std::abs (somme) > 1e-9)
                 for (int k = 0; k < kTaps; ++k)
-                    table[(size_t) (p * kTaps + k)] = (float) (table[(size_t) (p * kTaps + k)] / somme);
+                    table[(size_t) (p * kTaps + k)] =
+                        (float) (table[(size_t) (p * kTaps + k)] / somme);
         }
     }
 
-    /** `lire(anneau, masque, pos)` : pos en echantillons, partie fractionnaire
-        interpolee. L'anneau doit avoir au moins kTaps echantillons d'avance. */
     inline float lire (const float* anneau, long long masque, double pos) const noexcept
     {
         const long long i0 = (long long) pos;
         const int p = (int) ((pos - (double) i0) * kPhases) & (kPhases - 1);
         const float* h = &table[(size_t) (p * kTaps)];
         constexpr int demi = kTaps / 2;
-        float acc = 0.0f;
+        double acc = 0.0;
         for (int k = 0; k < kTaps; ++k)
-            acc += h[k] * anneau[(size_t) ((i0 + k - demi + 1) & masque)];
-        return acc;
+            acc += (double) h[k] * anneau[(size_t) ((i0 + k - demi + 1) & masque)];
+        return (float) acc;
     }
 
 private:
+    /** Bessel modifiee de 1re espece, ordre 0 — pour la fenetre de Kaiser. */
+    static double besselI0 (double x)
+    {
+        double somme = 1.0, terme = 1.0;
+        for (int k = 1; k < 40; ++k)
+        {
+            terme *= (x * 0.5) / k;
+            somme += terme * terme;
+        }
+        return somme;
+    }
+
     std::vector<float> table;
+    double coupure = -1.0;
 };
 
 //==============================================================================

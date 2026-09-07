@@ -83,6 +83,18 @@ int main (int argc, char** argv)
     // echantillons deplace le spectre de 10 dB. Un bruit stationnaire moyenne
     // toutes les phases et donne une mesure stable.
     const int signal = (argc > 7) ? std::atoi (argv[7]) : 0;
+    // Position de l'impulsion, en echantillons.
+    //
+    // ⚠️ Elle compte, et c'est contre-intuitif. Le bloqueur d'ordre zero
+    // maintient chaque echantillon jusqu'au suivant : la reponse a une
+    // impulsion depend donc de la phase de celle-ci par rapport a l'horloge de
+    // 31,25 kHz. Comparer deux moteurs sur une seule position d'impulsion, c'est
+    // comparer deux phases. Il faut moyenner sur plusieurs.
+    //
+    // Une position non nulle sert aussi cote prototype : np.convolve(..., "same")
+    // retire (N-1)/2 echantillons au debut, donc une impulsion posee a l'indice 0
+    // y perd la moitie avant de la reponse de ses deux FIR.
+    const int decalage = (argc > 8) ? std::atoi (argv[8]) : 0;
 
     const int n = (int) (kFs * duree);
     std::vector<float> x ((size_t) n, 0.0f), g ((size_t) n), d ((size_t) n);
@@ -109,7 +121,7 @@ int main (int argc, char** argv)
         std::fill (x.begin(), x.end(), 0.0f);
         if (signal == 0)
         {
-            x[0] = 1.0f;
+            x[(size_t) std::min (decalage, n - 1)] = 1.0f;
         }
         else
         {
@@ -146,7 +158,8 @@ int main (int argc, char** argv)
                 if (chaine == 2)
             ecrireWav (dossier + "/INTERNE_" + nom + ".wav", sonde, sonde, kFsInterne);
         else
-            ecrireWav (dossier + (chaine ? "/CHAINE_" : (signal ? "/BRUIT_" : "/CPP_")) + nom + ".wav", g, d, kFs);
+            ecrireWav (dossier + (chaine ? "/CHAINE_" : (signal ? "/BRUIT_" : "/CPP_"))
+                       + nom + (decalage ? ("_d" + std::to_string (decalage)) : "") + ".wav", g, d, kFs);
         std::printf ("  %-10s crete %.4f  latence %3d ech.  CPU %5.2f %% d'un coeur\n",
                      p.nom, crete, m.latenceEchantillons(), charge);
     }

@@ -20,6 +20,7 @@ ICI = Path(__file__).resolve().parent
 RACINE = ICI.parent.parent                      # « LuxRev-1 VST »
 ACCORD = RACINE / "_proto" / "accord" / "programmes.json"
 MESURES = RACINE / "_proto" / "mesures"
+VOICING = RACINE / "_proto" / "accord" / "voicing_portage.json"
 SORTIE = ICI.parent / "Source" / "Generated" / "Programmes.h"
 
 # Ordre d'affichage a la facade. Les cles sont celles de l'accordeur.
@@ -130,6 +131,25 @@ def lire_mesures():
 def main():
     acc = json.loads(ACCORD.read_text(encoding="utf-8"))
     mesures = lire_mesures()
+
+    # ⚠️ Le FIR de voicing du plugin n'est pas celui du prototype.
+    #
+    # Ce FIR est l'inverse du residu spectral MESURE entre le moteur et les IR du
+    # LXP-1. Celui de l'accordage a ete ajuste contre le moteur Python ; le
+    # portage C++ ne decime pas exactement de la meme facon, donc le meme FIR n'y
+    # annule plus le meme residu — il en restait jusqu'a 2 dB.
+    #
+    # Decision (2026-09-08) : la reference est LA MACHINE, pas le prototype. Les
+    # deux moteurs visent donc la meme cible mesuree avec chacun son voicing,
+    # plutot que d'etre rendus identiques entre eux.
+    voicing = {}
+    if VOICING.exists():
+        voicing = json.loads(VOICING.read_text(encoding="utf-8"))
+        print(f"  voicing du portage : {len(voicing)} programmes "
+              f"(depuis {VOICING.name})")
+    else:
+        print("  ⚠️ voicing_portage.json absent — on retombe sur celui du prototype,"
+              " qui laisse jusqu'a 2 dB de residu dans le plugin")
     manquants = [c for c, _ in ORDRE if c not in acc]
     if manquants:
         raise SystemExit(f"programmes absents de l'accordage : {manquants}")
@@ -188,7 +208,7 @@ def main():
         p = acc[cle]
         t.append(f"// --- {nom}")
         t.append(f"inline constexpr float kFir{i}[kTailleFirVoicing] = {{")
-        t.append(flottants(p["correction_fir"]))
+        t.append(flottants(voicing.get(cle, p["correction_fir"])))
         t.append("};")
         t.append(f"inline constexpr float kCompColor{i}[5] = {{ "
                  + ", ".join(litteral(v) for v in p.get("compensation_color", [1]*5)) + " };")

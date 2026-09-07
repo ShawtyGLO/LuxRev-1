@@ -188,7 +188,7 @@ public:
         fsHote = sampleRateHote;
         ratio  = fsHote / kFsInterne;
 
-        interp.preparer();
+        interp.preparer (ratio);
         anneauIn.assign ((size_t) kTailleAnneau, 0.0f);
         anneauL.assign  ((size_t) kTailleAnneau, 0.0f);
         anneauR.assign  ((size_t) kTailleAnneau, 0.0f);
@@ -379,7 +379,7 @@ public:
         }
 
         // --- 2. descente vers 31,25 kHz, puis le tank
-        while (posLecture + (double) InterpolateurSinc::kTaps < (double) ecritsIn)
+        while (posLecture + (double) Decimateur::kTaps < (double) ecritsIn)
         {
             const float xi = lireInterpole (posLecture);
             posLecture += ratio;
@@ -594,7 +594,7 @@ private:
     long long ecritsIn = 0, ecritsInterne = kSlack;
     double posLecture = 0.0, posSortie = 0.0;
     std::vector<float> anneauIn, anneauL, anneauR;
-    InterpolateurSinc interp;
+    Decimateur interp;
 
     Biquad preSos, deSosL, deSosR;
     Chaine aa, murL, murR, tiltL, tiltR;
