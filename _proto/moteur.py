@@ -101,7 +101,9 @@ def macro_color(params, color=0.5, compensation=None):
     # on la retire ici pour que `q` reste directement utilisable comme **kwargs.
     if compensation is None:
         compensation = q.get("compensation_color")
+    comp_lp = q.get("compensation_lp")
     q.pop("compensation_color", None)
+    q.pop("compensation_lp", None)
 
     def vers(actuel, but, k):
         """Interpole de la valeur accordee vers une extremite. PAS une multiplication.
@@ -147,6 +149,21 @@ def macro_color(params, color=0.5, compensation=None):
         q["t60_s"] = float(q.get("t60_s", 1.0)
                            * np.interp(r, np.linspace(0.0, 1.0, len(compensation)),
                                        compensation))
+
+    # ⚠️ COMPENSATION SPECTRALE, meme principe.
+    #
+    # Changer le nombre et la longueur des lignes deplace aussi la couleur tonale : « la
+    # clarte est moins presente, ca manque d'informations dans les aigus ». Un utilisateur
+    # devrait rattraper au shelf a chaque mouvement du bouton — ce qui reviendrait a dire
+    # que le bouton n'est pas fini.
+    #
+    # COLOR doit changer le CARACTERE (densite modale, grain), pas le TIMBRE. La coupure du
+    # filtre de sortie est donc corrigee par la meme courbe a 5 points, calibree une fois.
+    if comp_lp:
+        q["lp_sortie_hz"] = float(np.clip(
+            q.get("lp_sortie_hz", 8000.0)
+            * np.interp(r, np.linspace(0.0, 1.0, len(comp_lp)), comp_lp),
+            1000.0, 22000.0))
     return q
 
 
@@ -413,6 +430,8 @@ class Moteur:
                            retrouver. Sans effet sur les 12 programmes, dont le grave est
                            mesure plat (T60 grave/medium = 1,00 en moyenne)
       hp_sortie_hz      -> « Low Cut Filter » de sortie
+      tilt              -> TILT en dB : negatif = plus de corps, positif = plus d'air
+      tilt_pivot_hz     -> frequence de bascule (700 Hz par defaut)
       ratio_hf          -> T60(8 kHz)/T60(500 Hz) VISE ; pilote directement les filtres
                            absorbants par ligne, sans coupure intermediaire a chercher
       lp_sortie_hz      -> pente douce ; coin HF a -3 dB
@@ -450,7 +469,7 @@ class Moteur:
                  forme=0.0, pente_prises=0.0, fenetre_diff_ms=60.0,
                  treble_hz=20000.0,
                  predelai_fb=0.0, ratio_bass=1.0, cross_bass_hz=400.0,
-                 hp_sortie_hz=0.0):
+                 hp_sortie_hz=0.0, tilt=0.0, tilt_pivot_hz=700.0):
         self.fs_hote = fs
         # Tout l'interieur travaille a la frequence de la machine.
         fs = self.fs = FS_INTERNE
@@ -650,6 +669,35 @@ class Moteur:
         self.correction_fir = (np.asarray(correction_fir, dtype=float)
                                if correction_fir is not None else None)
         self.hp_sortie_hz = float(hp_sortie_hz)
+
+        # --- TILT : un seul bouton, de « corps » a « air ».
+        #
+        # Deux plateaux opposes autour d'un pivot : ce qu'on donne a l'aigu, on l'enleve au
+        # grave. L'energie totale bouge donc peu, et l'oreille entend un basculement
+        # d'assiette plutot qu'un changement de volume.
+        #
+        # ⚠️ A ne pas confondre avec la compensation de COLOR. La compensation est INTERNE
+        # et invisible : elle garantit que COLOR ne deplace pas le timbre. TILT est une
+        # commande artistique PAR-DESSUS. S'appuyer sur TILT pour rattraper COLOR
+        # obligerait l'utilisateur a corriger a chaque mouvement du bouton, ce qui
+        # reviendrait a livrer un bouton non fini.
+        self.tilt_db = float(np.clip(tilt, -12.0, 12.0))
+        if abs(self.tilt_db) > 0.01:
+            # Forme classique du tilt, du 1er ordre :
+            #     H(s) = (1/G + s/w) / (1 + s/(G*w))
+            # gain 1/G en continu, G a l'infini, bascule autour de w. Symetrique par
+            # construction : ce qu'on ajoute d'un cote, on l'enleve exactement de l'autre.
+            #
+            # Ma premiere version cascadait deux plateaux ecrits a la main et sortait
+            # dissymetrique — a +9 dB elle coupait 6,3 dB de grave pour ne monter que
+            # 2,2 dB d'aigu. Une seule section bien posee vaut mieux que deux bricolees.
+            G = 10.0 ** (self.tilt_db / 40.0)
+            w = 2.0 * np.pi * float(np.clip(tilt_pivot_hz, 100.0, 4000.0))
+            b, a = _sig.bilinear([1.0 / w, 1.0 / G], [1.0 / (G * w), 1.0], self.fs_hote)
+            self.tilt_sos = _sig.tf2sos(b, a)
+        else:
+            self.tilt_sos = None
+
         self.pre_sos = _emphase(self.fs_hote, False)
         self.de_sos = _emphase(self.fs_hote, True)
 
@@ -741,6 +789,9 @@ class Moteur:
             _bloqueur(L, len(L) * 192 // 125), self.sinc_fir, "same"))
         R = _sig.sosfilt(self.mur_sos, np.convolve(
             _bloqueur(R, len(R) * 192 // 125), self.sinc_fir, "same"))
+        if self.tilt_sos is not None:
+            L = _sig.sosfilt(self.tilt_sos, L)
+            R = _sig.sosfilt(self.tilt_sos, R)
         if self.correction_fir is not None:
             L = np.convolve(L, self.correction_fir, "same")
             R = np.convolve(R, self.correction_fir, "same")
