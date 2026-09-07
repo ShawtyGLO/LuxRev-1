@@ -248,21 +248,42 @@ timbre — exactement ce qui vient d'être validé. La macro doit être **compen
 elle raccourcit les lignes, elle rattrape le gain de boucle pour que la durée ne bouge pas.
 Sinon tourner Résonance changera la longueur de la réverbe, ce qui n'est pas l'intention.
 
-### STÉRÉO — 100 % au centre
+### STÉRÉO — 100 % au centre  ✅ implémenté 2026-09-07
 
-100 % = l'image du LXP-1 telle que mesurée.
+100 % = l'image du LXP-1 telle que mesurée. À 100 % pile, la commande est **court-circuitée
+dans le code** : le rendu est bit à bit identique au moteur validé à l'oreille. Vérifié,
+écart maximum 0,000e+00.
 
-**En dessous** : on ramène les sorties vers le mono. Sans piège.
+Le mécanisme retenu est **milieu/côté** : on décompose en `M = (L+R)/2` et `C = (L−R)/2`,
+on multiplie le côté par la largeur, on recompose. Plage 0 % à 160 %.
 
-**Au-dessus** : ⛔ **pas par opposition de phase.** La corrélation L/R mesurée est déjà de
-0,00 à 0,02 — on est au plancher de la décorrélation. Pousser en corrélation négative
-élargit au casque et **s'effondre en mono**, ce qui est disqualifiant pour une réverbe de
-bus.
+| largeur | corrélation L/R | mono |
+|---:|---:|---:|
+| 0 % | +1,000 | inchangé |
+| 50 % | +0,551 | inchangé |
+| **100 %** | **−0,074** | **inchangé** |
+| 130 % | −0,324 | inchangé |
+| 160 % | −0,496 | inchangé |
 
-✅ La bonne voie : le FDN a huit lignes. Élargir se fait en donnant à L et R des
-**sous-ensembles de lignes disjoints**, avec des longueurs plus contrastées. La différence
-entre canaux augmente sans jamais créer d'anti-phase. C'est un avantage propre à la
-nouvelle topologie — le figure-8 à deux bras ne pouvait pas le faire.
+**⚠️ Correction d'une erreur d'analyse antérieure.** J'avais écarté le milieu/côté en
+l'assimilant à de l'opposition de phase et en affirmant qu'il « s'effondre en mono ».
+**C'est faux, et la mesure le montre** : en mono le côté s'annule et il reste `M` intact,
+donc la somme mono est *rigoureusement invariante* sur toute la plage — 0,0 dB d'écart de
+0 % à 160 %. Amplifier le côté n'enlève rien au mono ; ça n'y **ajoute** simplement rien.
+La vraie conséquence de la largeur est que la part du signal qui n'existe qu'en stéréo
+grandit : à 160 %, le mono ne porte plus que 6,0 dB sous le niveau stéréo, contre 3,3 dB à
+la référence. On perd de l'ampleur en mono, pas de la matière.
+
+C'est pour ça que la plage s'arrête à 160 % (corrélation −0,50) et pas plus haut : au-delà,
+l'écart entre l'écoute casque et l'écoute mono devient assez grand pour piéger un mixage.
+
+**La route des sous-ensembles de lignes disjoints n'a pas été prise.** Elle était correcte
+mais inutile ici : le FDN distribue *déjà* les lignes paires à gauche et impaires à droite,
+donc les deux canaux sont déjà disjoints — c'est ce qui produit la corrélation de −0,07 à
+la référence, soit le plancher de la décorrélation. Aller plus loin demanderait de donner à
+un canal les lignes courtes et à l'autre les longues, ce qui **déséquilibre le timbre entre
+les deux canaux** (un côté brillant, un côté sombre). Le milieu/côté élargit sans toucher
+au timbre de chaque canal. Gardé en réserve si la plage haute déçoit à l'oreille.
 
 ### ⛔ ÉPOQUE — écarté, et pas seulement reporté
 

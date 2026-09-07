@@ -430,6 +430,7 @@ class Moteur:
                            retrouver. Sans effet sur les 12 programmes, dont le grave est
                            mesure plat (T60 grave/medium = 1,00 en moyenne)
       hp_sortie_hz      -> « Low Cut Filter » de sortie
+      stereo            -> largeur ; 1,0 = l'image mesuree du LXP-1
       tilt              -> TILT en dB : negatif = plus de corps, positif = plus d'air
       tilt_pivot_hz     -> frequence de bascule (700 Hz par defaut)
       ratio_hf          -> T60(8 kHz)/T60(500 Hz) VISE ; pilote directement les filtres
@@ -469,7 +470,8 @@ class Moteur:
                  forme=0.0, pente_prises=0.0, fenetre_diff_ms=60.0,
                  treble_hz=20000.0,
                  predelai_fb=0.0, ratio_bass=1.0, cross_bass_hz=400.0,
-                 hp_sortie_hz=0.0, tilt=0.0, tilt_pivot_hz=700.0):
+                 hp_sortie_hz=0.0, tilt=0.0, tilt_pivot_hz=700.0,
+                 stereo=1.0):
         self.fs_hote = fs
         # Tout l'interieur travaille a la frequence de la machine.
         fs = self.fs = FS_INTERNE
@@ -681,6 +683,19 @@ class Moteur:
         # commande artistique PAR-DESSUS. S'appuyer sur TILT pour rattraper COLOR
         # obligerait l'utilisateur a corriger a chaque mouvement du bouton, ce qui
         # reviendrait a livrer un bouton non fini.
+        # --- STEREO : 100 % = l'image du LXP-1 telle que mesuree.
+        #
+        # Travaille en milieu/cote. En dessous de 100 % on reduit le cote vers le mono ;
+        # au-dessus on l'amplifie.
+        #
+        # ⚠️ Ce n'est PAS de l'opposition de phase — en mono le cote s'annule et il reste
+        # le milieu intact, donc rien ne s'effondre. Mais sur une reverbe dont les deux
+        # sorties sont deja totalement decorrelees (correlation mesuree 0,00 a 0,02),
+        # milieu et cote portent la meme energie : amplifier le cote fait perdre en mono
+        # une part croissante du signal. La plage est bornee pour cette raison, et la
+        # compatibilite mono est mesuree dans le banc plutot que supposee.
+        self.stereo = float(np.clip(stereo, 0.0, 1.6))
+
         self.tilt_db = float(np.clip(tilt, -12.0, 12.0))
         if abs(self.tilt_db) > 0.01:
             # Forme classique du tilt, du 1er ordre :
@@ -789,6 +804,10 @@ class Moteur:
             _bloqueur(L, len(L) * 192 // 125), self.sinc_fir, "same"))
         R = _sig.sosfilt(self.mur_sos, np.convolve(
             _bloqueur(R, len(R) * 192 // 125), self.sinc_fir, "same"))
+        if abs(self.stereo - 1.0) > 1e-3:
+            mid = (L + R) * 0.5
+            cote = (L - R) * 0.5 * self.stereo
+            L, R = mid + cote, mid - cote
         if self.tilt_sos is not None:
             L = _sig.sosfilt(self.tilt_sos, L)
             R = _sig.sosfilt(self.tilt_sos, R)
