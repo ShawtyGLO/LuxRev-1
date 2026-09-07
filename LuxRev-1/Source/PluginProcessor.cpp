@@ -237,6 +237,68 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 }
 
 //==============================================================================
+/** Presets d'usine.
+
+    ⚠️ Ce ne sont PAS les douze programmes — ceux-la sont un parametre, et les
+    doubler en presets n'apprendrait rien. Un preset est un POINT DE DEPART :
+    un programme, une durée, et un dosage. D'ou les valeurs de Mix bien en
+    dessous de 100 % sur les presets d'insertion, la ou le plugin seul demarre
+    en tout-humide, ce qui convient a un depart d'auxiliaire.
+
+    Les valeurs de Decay restent dans la plage que le manuel donne pour chaque
+    programme ; le processeur les borne de toute facon.
+*/
+const std::vector<LuxRevProcessor::Preset>& LuxRevProcessor::presets()
+{
+    // programme, decay, pre-delai, color, stereo, tilt, mix
+    static const std::vector<Preset> p = {
+        { "LXP-1 Hall B",        6, 2.60f,  33.0f,  50.0f, 100.0f,  0.0f, 100.0f },
+        { "Plaque courte",       8, 1.20f,   0.0f,  62.0f, 105.0f, +2.0f, 100.0f },
+        { "Grande salle",        5, 3.50f,  40.0f,  50.0f, 115.0f,  0.0f, 100.0f },
+        { "Porte 80s",          10, 0.60f,   0.0f,  58.0f, 125.0f, +1.0f,  45.0f },
+        { "Ambiance discrete",   1, 0.90f,  16.0f,  45.0f,  95.0f, -1.0f,  18.0f },
+        { "Metallique",          9, 1.80f,  20.0f,  85.0f, 120.0f, +3.0f, 100.0f },
+        { "Cremeux large",       7, 3.00f,  33.0f,  15.0f, 130.0f, -2.0f, 100.0f },
+        { "Voix, court",         2, 1.10f,  25.0f,  50.0f, 100.0f, +1.5f,  25.0f },
+        { "Batterie, plaque",    8, 1.60f,  12.0f,  55.0f, 110.0f,  0.0f,  30.0f },
+        { "Inverse",            11, 0.90f,   0.0f,  50.0f, 100.0f,  0.0f,  60.0f },
+    };
+    return p;
+}
+
+int LuxRevProcessor::getNumPrograms()
+{
+    return (int) presets().size();
+}
+
+const juce::String LuxRevProcessor::getProgramName (int i)
+{
+    if (juce::isPositiveAndBelow (i, (int) presets().size()))
+        return juce::String (presets()[(size_t) i].nom);
+    return {};
+}
+
+void LuxRevProcessor::setCurrentProgram (int i)
+{
+    if (! juce::isPositiveAndBelow (i, (int) presets().size())) return;
+    presetCourant = i;
+    const auto& p = presets()[(size_t) i];
+
+    auto poser = [this] (const char* id, float valeur)
+    {
+        if (auto* param = etat.getParameter (id))
+            param->setValueNotifyingHost (param->convertTo0to1 (valeur));
+    };
+    poser ("programme", (float) p.programme);
+    poser ("decay",     p.decay);
+    poser ("predelai",  p.predelai);
+    poser ("color",     p.color);
+    poser ("stereo",    p.stereo);
+    poser ("tilt",      p.tilt);
+    poser ("mix",       p.mix);
+}
+
+//==============================================================================
 juce::AudioProcessorEditor* LuxRevProcessor::createEditor()
 {
     return new LuxRevEditor (*this);

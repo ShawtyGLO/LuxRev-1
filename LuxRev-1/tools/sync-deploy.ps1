@@ -14,7 +14,7 @@
 #  Parametre : severite de pluginval, de 1 a 10. 5 pour une passe de routine,
 #  10 avant de partager une version.
 #
-#  ⚠️ pluginval N'A PAS D'OREILLES. Il attrape les fautes de CONSTRUCTION —
+#  /!\ pluginval N'A PAS D'OREILLES. Il attrape les fautes de CONSTRUCTION —
 #  plantages, NaN, denormaux, latence mal declaree, etat qui ne se recharge pas.
 #  Un moteur qui sonne faux passe au vert. Pour le SON, le juge est
 #  `_proto/comparer_portage.py`, qui compare le C++ au prototype accorde sur les
@@ -89,4 +89,5 @@ Info "deploiement vers $dst"
 if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
 Copy-Item $src $dst -Recurse -Force
 Write-Host '  LuxRev-1 deploye.' -ForegroundColor Green
-Write-Host '  ⚠️ pluginval ne juge pas le son. Pour ca : python _proto/comparer_portage.py' -ForegroundColor DarkYellow
+Write-Host '  RAPPEL : pluginval ne juge pas le son. Pour ca :' -ForegroundColor DarkYellow
+Write-Host '    python _proto/comparer_portage.py   (portage contre prototype)' -ForegroundColor DarkYellow

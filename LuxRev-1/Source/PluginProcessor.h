@@ -34,10 +34,15 @@ public:
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override;
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    // ⚠️ Deux notions de « programme » se croisent ici, et il faut les tenir
+    // separees. Le PROGRAMME LXP-1 (Hall B, Gate…) est un parametre du plugin,
+    // choisi dans la grille de la facade. Ce que JUCE appelle « program » est
+    // autre chose : le preset que l'hote affiche dans son propre menu. Un preset
+    // pose un programme ET les six commandes.
+    int getNumPrograms() override;
+    int getCurrentProgram() override { return presetCourant; }
+    void setCurrentProgram (int) override;
+    const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
 
     void getStateInformation (juce::MemoryBlock&) override;
@@ -50,6 +55,15 @@ public:
     std::atomic<float> niveauEntreeDb { -100.0f };
 
     static juce::StringArray nomsProgrammes();
+
+    /** Un preset d'usine : un programme LXP-1 et les six commandes. */
+    struct Preset
+    {
+        const char* nom;
+        int   programme;
+        float decay, predelai, color, stereo, tilt, mix;
+    };
+    static const std::vector<Preset>& presets();
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout construireParametres();
@@ -72,6 +86,8 @@ private:
     std::atomic<float>* pStereo    = nullptr;
     std::atomic<float>* pTilt      = nullptr;
     std::atomic<float>* pMix       = nullptr;
+
+    int presetCourant = 0;
 
     juce::SmoothedValue<float> mixLisse;
     double sampleRateCourant = 48000.0;
