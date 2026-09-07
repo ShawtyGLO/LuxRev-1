@@ -41,10 +41,25 @@ MARQUEUR_SILENCE = 0.5          # secondes de silence apres le marqueur
 # --------------------------------------------------------------------------- WAV
 
 def ecrire_wav(chemin, x, fs=FS):
-    """WAV RIFF float32 mono. Ecrit a la main pour ne dependre que de numpy."""
-    d = np.asarray(x, dtype="<f4").tobytes()
+    """WAV RIFF float32, mono ou multicanal. Ecrit a la main pour ne dependre que de numpy.
+
+    ⚠️ Le nombre de canaux est deduit de la forme de `x`, il n'est PAS code en dur.
+    Un tableau [n] donne du mono, un tableau [n, canaux] donne du multicanal entrelace.
+    Cette fonction a longtemps declare 1 canal quoi qu'on lui passe : un rendu stereo
+    ressortait alors en mono de longueur double, avec L et R alternes — inecoutable, et
+    difficile a reperer parce que le fichier s'ouvre et sonne « presque » juste.
+    """
+    x = np.asarray(x)
+    if x.ndim == 1:
+        canaux = 1
+    elif x.ndim == 2:
+        canaux = x.shape[1]
+    else:
+        raise ValueError(f"ecrire_wav : forme {x.shape} non geree")
+    d = np.ascontiguousarray(x, dtype="<f4").tobytes()
+    bloc = 4 * canaux
     en_tete = b"RIFF" + struct.pack("<I", 36 + len(d)) + b"WAVE"
-    en_tete += b"fmt " + struct.pack("<IHHIIHH", 16, 3, 1, fs, fs * 4, 4, 32)
+    en_tete += b"fmt " + struct.pack("<IHHIIHH", 16, 3, canaux, fs, fs * bloc, bloc, 32)
     en_tete += b"data" + struct.pack("<I", len(d))
     chemin.write_bytes(en_tete + d)
 

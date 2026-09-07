@@ -71,6 +71,20 @@ def _emphase(fs, inverse=False):
     return _sig.tf2sos(b, a)
 
 
+def _courbe_compensation(points):
+    """Normalise une courbe de compensation pour qu'elle vaille EXACTEMENT 1,0 au centre.
+
+    ⚠️ Sans ca, COLOR a 50 % ne redonne pas le moteur accorde. Les courbes sont mesurees
+    par regression, donc leur point central sort a 1,01 ou 0,995 plutot qu'a 1,000 — assez
+    pour decaler le T60 de 1 % au centre de la course. Inaudible, mais c'est la promesse
+    du bouton qui tombe : « le son a position originale ne doit pas changer de nos mesures
+    des IR ». Le centre est un point fixe, pas un resultat d'ajustement.
+    """
+    c = np.asarray(points, dtype=float)
+    milieu = float(np.interp(0.5, np.linspace(0.0, 1.0, len(c)), c))
+    return c / milieu if abs(milieu) > 1e-9 else c
+
+
 def macro_color(params, color=0.5, compensation=None):
     """Applique la macro COLOR a un jeu de parametres accorde.
 
@@ -146,9 +160,9 @@ def macro_color(params, color=0.5, compensation=None):
     # fois par `accorder.py`. Interpolee ici, elle coute une multiplication au moment de
     # construire le moteur — rien en temps reel.
     if compensation:
+        c = _courbe_compensation(compensation)
         q["t60_s"] = float(q.get("t60_s", 1.0)
-                           * np.interp(r, np.linspace(0.0, 1.0, len(compensation)),
-                                       compensation))
+                           * np.interp(r, np.linspace(0.0, 1.0, len(c)), c))
 
     # ⚠️ COMPENSATION SPECTRALE, meme principe.
     #
@@ -162,7 +176,8 @@ def macro_color(params, color=0.5, compensation=None):
     if comp_lp:
         q["lp_sortie_hz"] = float(np.clip(
             q.get("lp_sortie_hz", 8000.0)
-            * np.interp(r, np.linspace(0.0, 1.0, len(comp_lp)), comp_lp),
+            * np.interp(r, np.linspace(0.0, 1.0, len(comp_lp)),
+                        _courbe_compensation(comp_lp)),
             1000.0, 22000.0))
     return q
 
