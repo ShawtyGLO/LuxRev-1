@@ -1,0 +1,381 @@
+<title>LuxRev-1 — façade v1</title>
+<style>
+/* ------------------------------------------------------------------
+   LuxRev-1 — maquette de façade v1
+   Direction : un Lexicon qui a vieilli. Voir la note du vault
+   « LuxRev-1 - Direction visuelle ». Le vieillissement se lit dans la
+   COULEUR, jamais dans des ornements ajoutés — Lexicon n'a jamais fait
+   de bois ni de vis dorées, leurs machines étaient sobres.
+   ------------------------------------------------------------------ */
+
+:root{
+  /* --- patiné : soleil et fumée (direction retenue) --- */
+  --fond:        #17161a;
+  --panneau-a:   #cec7b4;
+  --panneau-b:   #bdb5a1;
+  --panneau-c:   #a9a08c;
+  --bande:       #969a58;
+  --bande-2:     #b3b06a;
+  --serigraphie: #46423a;
+  --serigraphie-2:#6d6759;
+  --bouton-a:    #3a3833;
+  --bouton-b:    #24231f;
+  --repere:      #e8e0c8;
+  --led:         #c8b34a;
+  --creux:       rgba(60,52,38,.42);
+  --relief:      rgba(255,250,235,.55);
+}
+:root[data-skin="lexicon"]{
+  /* --- référence : le Lexicon d'origine, noir et bleu --- */
+  --panneau-a:   #2a2c30;
+  --panneau-b:   #1e2024;
+  --panneau-c:   #141518;
+  --bande:       #1c5aa8;
+  --bande-2:     #2f7fd6;
+  --serigraphie: #e6e8ea;
+  --serigraphie-2:#9aa0a8;
+  --bouton-a:    #4a4d52;
+  --bouton-b:    #2a2c30;
+  --repere:      #ffffff;
+  --led:         #6ee38a;
+  --creux:       rgba(0,0,0,.55);
+  --relief:      rgba(255,255,255,.14);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --fond:#111014; } }
+:root[data-theme="dark"]{ --fond:#111014; }
+
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; background:var(--fond);
+  font:14px/1.5 "Helvetica Neue",Helvetica,Arial,sans-serif;
+  color:#8d8778; display:flex; flex-direction:column; align-items:center;
+  padding:34px 16px 56px; gap:22px;
+}
+
+/* ---------------- le panneau ---------------- */
+.panneau{
+  width:min(1040px,100%); border-radius:7px; position:relative; overflow:hidden;
+  background:
+    radial-gradient(120% 150% at 12% -20%, var(--panneau-a) 0%, var(--panneau-b) 52%, var(--panneau-c) 100%);
+  box-shadow:0 26px 60px -18px rgba(0,0,0,.72), 0 0 0 1px rgba(0,0,0,.5),
+             inset 0 1px 0 var(--relief), inset 0 -2px 6px var(--creux);
+}
+/* le soleil et la fumée : une usure inégale, plus marquée en haut à gauche */
+.panneau::before{
+  content:""; position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply;
+  background:
+    radial-gradient(70% 90% at 8% 4%,  rgba(150,132,92,.30), transparent 62%),
+    radial-gradient(60% 80% at 96% 92%, rgba(96,84,60,.26),  transparent 66%);
+}
+:root[data-skin="lexicon"] .panneau::before{opacity:0}
+/* grain de sérigraphie */
+.panneau::after{
+  content:""; position:absolute; inset:0; pointer-events:none; opacity:.30;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px);
+}
+
+/* ---------------- bandeau de marque ---------------- */
+.entete{
+  display:flex; align-items:baseline; gap:18px; padding:20px 30px 0; position:relative; z-index:2;
+}
+.marque{
+  font-size:25px; font-weight:700; letter-spacing:.13em; color:var(--serigraphie);
+  text-shadow:0 1px 0 var(--relief);
+}
+.marque span{font-weight:300; letter-spacing:.2em}
+.sous-marque{
+  font-size:9.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--serigraphie-2);
+  margin-left:auto; padding-bottom:3px;
+}
+.bande{
+  height:5px; margin:13px 30px 0; position:relative; z-index:2; border-radius:2px;
+  background:linear-gradient(90deg,var(--bande) 0%,var(--bande-2) 46%,var(--bande) 100%);
+  box-shadow:0 1px 0 var(--relief);
+}
+/* la bande a pris le soleil : elle est délavée par endroits */
+.bande::after{
+  content:""; position:absolute; inset:0; border-radius:2px; mix-blend-mode:screen; opacity:.55;
+  background:linear-gradient(90deg,transparent 0 18%,rgba(220,214,170,.75) 34%,transparent 52% 100%);
+}
+:root[data-skin="lexicon"] .bande::after{opacity:0}
+
+/* ---------------- rangée de commandes ---------------- */
+.rangee{
+  display:flex; align-items:flex-start; gap:18px; padding:26px 30px 30px;
+  position:relative; z-index:2;
+}
+.separateur{
+  align-self:stretch; width:1px; margin:8px 4px 22px;
+  background:linear-gradient(180deg,transparent,var(--creux) 22%,var(--creux) 78%,transparent);
+  box-shadow:1px 0 0 var(--relief);
+}
+.commandes{display:flex; gap:16px; flex:1; justify-content:space-between}
+
+.commande{display:flex; flex-direction:column; align-items:center; gap:9px; width:78px}
+.etiquette{
+  font-size:9.5px; letter-spacing:.19em; text-transform:uppercase;
+  color:var(--serigraphie); text-shadow:0 1px 0 var(--relief); white-space:nowrap;
+}
+.valeur{
+  font-size:10px; letter-spacing:.06em; color:var(--serigraphie-2);
+  font-variant-numeric:tabular-nums; min-height:14px;
+}
+
+/* ---------------- les boutons ---------------- */
+.bouton{
+  --angle:0deg;
+  width:58px; height:58px; border-radius:50%; position:relative; cursor:ns-resize;
+  background:
+    linear-gradient(180deg,var(--bouton-a),var(--bouton-b));
+  box-shadow:
+    0 3px 7px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.16), inset 0 -3px 7px rgba(0,0,0,.5);
+  touch-action:none;
+}
+.bouton::before{ /* le repère, unique ornement — la signature Lexicon */
+  content:""; position:absolute; left:50%; top:6px; width:2.5px; height:19px;
+  border-radius:2px; background:var(--repere); opacity:.9;
+  transform:translateX(-50%); transform-origin:50% 23px;
+  rotate:var(--angle);
+}
+.bouton:focus-visible{outline:2px solid var(--bande-2); outline-offset:4px}
+.piste{position:absolute; inset:-11px; pointer-events:none}
+.piste circle{fill:none; stroke:var(--creux); stroke-width:2.4}
+.piste .actif{stroke:var(--bande); stroke-width:3.4; stroke-linecap:round}
+:root[data-skin="lexicon"] .piste .actif{stroke:var(--bande-2)}
+
+/* ---------------- sélecteur de programme ---------------- */
+.selecteur{position:relative; width:272px; height:272px; flex:none}
+.selecteur .bouton{
+  width:74px; height:74px; position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%);
+}
+.selecteur .bouton::before{height:23px; transform-origin:50% 31px}
+.couronne{position:absolute; inset:0; pointer-events:none}
+.couronne div{
+  position:absolute; left:50%; top:50%; font-size:8px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--serigraphie-2); white-space:nowrap;
+}
+.couronne div.sel{color:var(--serigraphie); font-weight:700}
+/* le cran sérigraphié en face de chaque nom */
+.crans{position:absolute; inset:0; pointer-events:none}
+.crans line{stroke:var(--creux); stroke-width:1.4}
+.crans line.sel{stroke:var(--serigraphie); stroke-width:2}
+.programme{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,58px);
+  font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--serigraphie);
+  text-shadow:0 1px 0 var(--relief);
+}
+.temoin{
+  width:6px; height:6px; border-radius:50%; background:var(--led); flex:none;
+  align-self:center; margin-bottom:5px;
+  box-shadow:0 0 7px var(--led), inset 0 -1px 1px rgba(0,0,0,.4);
+}
+
+/* ---------------- barre d'options ---------------- */
+.options{
+  width:min(1040px,100%); display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  font-size:12px;
+}
+.options button{
+  font:inherit; padding:7px 14px; border-radius:5px; cursor:pointer;
+  background:#242229; color:#b8b1a1; border:1px solid #35323b;
+}
+.options button[aria-pressed="true"]{background:#3a3644; color:#eae3d2; border-color:#514b5e}
+.note{
+  width:min(1040px,100%); font-size:12.5px; line-height:1.65; color:#7e7869;
+  border-left:2px solid #3a3644; padding-left:14px;
+}
+.note b{color:#a9a190; font-weight:600}
+</style>
+
+<div class="options">
+  <button id="skin" aria-pressed="false">Voir la version Lexicon d'origine</button>
+  <button id="reset">Réglages d'usine du programme</button>
+</div>
+
+<div class="panneau">
+  <div class="entete">
+    <div class="temoin"></div>
+    <div class="marque">LuxRev<span>-1</span></div>
+    <div class="sous-marque">Digital Reverberator</div>
+  </div>
+  <div class="bande"></div>
+
+  <div class="rangee">
+    <div class="selecteur">
+      <svg class="crans" id="crans" viewBox="0 0 272 272"></svg>
+      <div class="couronne" id="couronne"></div>
+      <div class="bouton" id="prog" tabindex="0" role="slider"
+           aria-label="Programme" aria-valuemin="1" aria-valuemax="12" aria-valuenow="7"></div>
+      <div class="programme" id="nom-prog">Hall B</div>
+    </div>
+
+    <div class="separateur"></div>
+
+    <div class="commandes" id="commandes"></div>
+  </div>
+</div>
+
+<p class="note">
+  <b>Façade v1.</b> Sept commandes, pas une de plus — le LXP-1 n'en avait que deux, et tout
+  ce qui s'ajoute doit se justifier. <b>Decay</b> et <b>Pre-Delay</b> sont les deux vrais
+  boutons de la machine, avec ses plages réelles (Program table du manuel). <b>Color</b>,
+  <b>Stéréo</b> et <b>Tilt</b> vont au-delà d'elle, et sont construits pour que leur position
+  neutre redonne <i>exactement</i> le LXP-1 mesuré : l'arc de ces trois-là part du centre,
+  pour que ça se voie sans lire la valeur. Le vocabulaire Lexicon complet (Size, Diffusion,
+  Definition, Treble Decay, Bass Multiply, Crossover, Shape, Spread, Chorusing) est prêt mais
+  reste <b>hors v1</b>, pour un onglet Advanced.
+</p>
+
+<script>
+const PROGRAMMES = ["Small 1","Small 2","Medium 1","Medium 2","Large 1","Large 2",
+                    "Hall B","Hall D","Plate B","Plate D","Gate","Inverse"];
+
+/* Réglages d'usine : T60 et pré-délai de la Program table du manuel LXP-1
+   (_proto/specs_lxp1.json). Le pré-délai monte à 246 ms sur la machine. */
+const USINE = {
+  "Small 1":[0.8,16], "Small 2":[1.2,16], "Medium 1":[1.2,33], "Medium 2":[1.6,33],
+  "Large 1":[2.2,33], "Large 2":[2.4,33], "Hall B":[2.6,33],   "Hall D":[1.6,33],
+  "Plate B":[1.7,0],  "Plate D":[1.8,33], "Gate":[0.6,0],      "Inverse":[0.9,0]
+};
+
+const COMMANDES = [
+  {id:"decay",  nom:"Decay",     min:0.08, max:9.0, def:2.6, pas:.01, fmt:v=>v.toFixed(2)+" s"},
+  {id:"delay",  nom:"Pre-Delay", min:0,    max:246, def:33,  pas:1,   fmt:v=>Math.round(v)+" ms"},
+  {id:"color",  nom:"Color",     min:0,    max:100, def:50,  pas:1,   fmt:v=>Math.round(v)+" %",  centre:50},
+  {id:"stereo", nom:"Stéréo",    min:0,    max:160, def:100, pas:1,   fmt:v=>Math.round(v)+" %",  centre:100},
+  {id:"tilt",   nom:"Tilt",      min:-9,   max:9,   def:0,   pas:.1,  fmt:v=>(v>0?"+":"")+v.toFixed(1)+" dB", centre:0},
+  {id:"mix",    nom:"Mix",       min:0,    max:100, def:100, pas:1,   fmt:v=>Math.round(v)+" %"}
+];
+
+const A0 = -140, A1 = 140;        // course du repère, en degrés
+const L_ARC = 215;                // longueur de l'arc de piste, en unités SVG
+
+function piste(){
+  const s = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  s.setAttribute("class","piste"); s.setAttribute("viewBox","0 0 100 100");
+  s.innerHTML = '<circle cx="50" cy="50" r="44" stroke-dasharray="215 400" transform="rotate(130 50 50)"/>'
+              + '<circle class="actif" cx="50" cy="50" r="44" stroke-dasharray="0 400" transform="rotate(130 50 50)"/>';
+  return s;
+}
+
+function fabrique(c){
+  const bloc = document.createElement("div"); bloc.className = "commande";
+  const et = document.createElement("div"); et.className = "etiquette"; et.textContent = c.nom;
+  const b  = document.createElement("div"); b.className = "bouton"; b.tabIndex = 0;
+  b.setAttribute("role","slider"); b.setAttribute("aria-label", c.nom);
+  const val = document.createElement("div"); val.className = "valeur";
+  b.appendChild(piste());
+  bloc.append(et, b, val);
+
+  let v = c.def;
+  function pose(){
+    const t = (v - c.min) / (c.max - c.min);
+    b.style.setProperty("--angle", (A0 + t*(A1-A0)) + "deg");
+    val.textContent = c.fmt(v);
+    b.setAttribute("aria-valuenow", v);
+    /* L'arc part du CENTRE quand la commande en a un. C'est ce qui rend visible,
+       sans lire la valeur, que la position neutre est un point de repos et non un
+       réglage parmi d'autres — la promesse « au centre, c'est le LXP-1 mesuré ». */
+    const tc = (c.centre === undefined) ? 0 : (c.centre - c.min)/(c.max - c.min);
+    const avant = Math.min(t, tc) * L_ARC;
+    const long  = Math.abs(t - tc) * L_ARC;
+    b.querySelector(".actif").setAttribute("stroke-dasharray", "0 " + avant + " " + long + " 400");
+  }
+  pose();
+
+  let y0 = 0, v0 = 0, actif = false;
+  b.addEventListener("pointerdown", e => { actif = true; y0 = e.clientY; v0 = v; b.setPointerCapture(e.pointerId); });
+  b.addEventListener("pointermove", e => {
+    if(!actif) return;
+    const fin = e.shiftKey ? 0.25 : 1;                     // Maj = réglage fin
+    v = v0 + (y0 - e.clientY) * (c.max - c.min) / 220 * fin;
+    v = Math.max(c.min, Math.min(c.max, Math.round(v / c.pas) * c.pas));
+    pose();
+  });
+  b.addEventListener("pointerup", () => { actif = false; });
+  b.addEventListener("keydown", e => {
+    const d = {ArrowUp:1, ArrowRight:1, ArrowDown:-1, ArrowLeft:-1}[e.key];
+    if(!d) return;
+    e.preventDefault();
+    v = Math.max(c.min, Math.min(c.max, v + d * c.pas * (e.shiftKey ? 1 : 10)));
+    pose();
+  });
+  b.addEventListener("dblclick", () => { v = c.def; pose(); });
+
+  return {bloc: bloc, set: function(x){ v = x; pose(); }, def: function(){ v = c.def; pose(); }};
+}
+
+const cmds = {};
+const zone = document.getElementById("commandes");
+COMMANDES.forEach(function(c){ const o = fabrique(c); cmds[c.id] = o; zone.appendChild(o.bloc); });
+
+/* ---- sélecteur de programme : les noms en couronne, comme sur le LXP-1 ---- */
+let iProg = 6;
+const couronne = document.getElementById("couronne");
+const crans = document.getElementById("crans");
+const PAS = 300 / (PROGRAMMES.length - 1);      // 12 crans sur 300 degrés
+
+PROGRAMMES.forEach(function(nom, i){
+  const a = (-150 + i * PAS) * Math.PI/180;
+  const sx = Math.sin(a), sy = -Math.cos(a);
+
+  /* Deux rayons en alternance. Douze noms sur une seule couronne se chevauchent
+     en haut, là où deux étiquettes voisines sont presque côte à côte : les
+     décaler d'un anneau sur deux règle le problème sans rétrécir le texte au
+     point de le rendre illisible. C'est ce que font les sélecteurs rotatifs
+     sérigraphiés quand ils ont trop de positions. */
+  const R = 100 + (i % 2) * 19;
+  const d = document.createElement("div");
+  d.textContent = nom;
+  /* le texte s'éloigne du centre : à gauche il grandit vers la gauche, à droite
+     vers la droite — sinon les noms longs viennent mordre sur le bouton */
+  const ancre = sx < -0.25 ? "-100%" : (sx > 0.25 ? "0%" : "-50%");
+  d.style.transform = "translate(" + (sx*R) + "px," + (sy*R) + "px) translate(" + ancre + ",-50%)";
+  couronne.appendChild(d);
+
+  const l = document.createElementNS("http://www.w3.org/2000/svg","line");
+  l.setAttribute("x1", 136 + sx*82); l.setAttribute("y1", 136 + sy*82);
+  l.setAttribute("x2", 136 + sx*90); l.setAttribute("y2", 136 + sy*90);
+  crans.appendChild(l);
+});
+
+function posePro(){
+  document.getElementById("prog").style.setProperty("--angle", (-150 + iProg*PAS) + "deg");
+  document.getElementById("nom-prog").textContent = PROGRAMMES[iProg];
+  Array.prototype.forEach.call(couronne.children, function(d,i){ d.classList.toggle("sel", i === iProg); });
+  Array.prototype.forEach.call(crans.children,    function(l,i){ l.classList.toggle("sel", i === iProg); });
+  const u = USINE[PROGRAMMES[iProg]];
+  cmds.decay.set(u[0]); cmds.delay.set(u[1]);
+}
+const prog = document.getElementById("prog");
+let py = 0, p0 = 0, pa = false;
+prog.addEventListener("pointerdown", e => { pa = true; py = e.clientY; p0 = iProg; prog.setPointerCapture(e.pointerId); });
+prog.addEventListener("pointermove", e => {
+  if(!pa) return;
+  const n = Math.max(0, Math.min(PROGRAMMES.length-1, Math.round(p0 + (py - e.clientY)/26)));
+  if(n !== iProg){ iProg = n; posePro(); }
+});
+prog.addEventListener("pointerup", () => { pa = false; });
+prog.addEventListener("keydown", e => {
+  const d = {ArrowUp:1, ArrowRight:1, ArrowDown:-1, ArrowLeft:-1}[e.key];
+  if(!d) return;
+  e.preventDefault();
+  iProg = Math.max(0, Math.min(PROGRAMMES.length-1, iProg + d));
+  posePro();
+});
+posePro();
+
+document.getElementById("skin").addEventListener("click", function(e){
+  const on = document.documentElement.getAttribute("data-skin") === "lexicon";
+  document.documentElement.setAttribute("data-skin", on ? "" : "lexicon");
+  e.target.setAttribute("aria-pressed", String(!on));
+  e.target.textContent = on ? "Voir la version Lexicon d'origine" : "Revenir à la version patinée";
+});
+document.getElementById("reset").addEventListener("click", function(){
+  COMMANDES.forEach(function(c){ cmds[c.id].def(); });
+  posePro();
+});
+</script>
