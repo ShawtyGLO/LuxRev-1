@@ -17,6 +17,7 @@ verifiable. Le portage JUCE viendra une fois les cibles atteintes.
 """
 
 import numpy as np
+from preampli import Preampli
 from scipy import signal as _sig
 
 FS = 48000
@@ -446,6 +447,7 @@ class Moteur:
                            mesure plat (T60 grave/medium = 1,00 en moyenne)
       hp_sortie_hz      -> « Low Cut Filter » de sortie
       stereo            -> largeur ; 1,0 = l'image mesuree du LXP-1
+      preampli_db       -> pot d'entree R52 en dB ; None = etage d'entree desactive
       tilt              -> TILT en dB : negatif = plus de corps, positif = plus d'air
       tilt_pivot_hz     -> frequence de bascule (700 Hz par defaut)
       ratio_hf          -> T60(8 kHz)/T60(500 Hz) VISE ; pilote directement les filtres
@@ -486,7 +488,7 @@ class Moteur:
                  treble_hz=20000.0,
                  predelai_fb=0.0, ratio_bass=1.0, cross_bass_hz=400.0,
                  hp_sortie_hz=0.0, tilt=0.0, tilt_pivot_hz=700.0,
-                 stereo=1.0):
+                 stereo=1.0, preampli_db=None):
         self.fs_hote = fs
         # Tout l'interieur travaille a la frequence de la machine.
         fs = self.fs = FS_INTERNE
@@ -711,6 +713,14 @@ class Moteur:
         # compatibilite mono est mesuree dans le banc plutot que supposee.
         self.stereo = float(np.clip(stereo, 0.0, 1.6))
 
+        # --- ETAGE D'ENTREE.
+        #
+        # `None` = pas de preampli du tout, et c'est le DEFAUT : les 12 programmes ont ete
+        # accordes sans lui, et l'introduire par defaut deplacerait la reference validee a
+        # l'oreille. Le passer a une valeur en dB insere l'etage neutre calibre sur le
+        # manuel (THD 0,07 % a +15 dBV, harmoniques impaires seulement) — voir preampli.py.
+        self.preampli = None if preampli_db is None else Preampli(gain_db=preampli_db)
+
         self.tilt_db = float(np.clip(tilt, -12.0, 12.0))
         if abs(self.tilt_db) > 0.01:
             # Forme classique du tilt, du 1er ordre :
@@ -797,6 +807,8 @@ class Moteur:
         31,25 kHz, et c'est ce qui borne sa bande a 15,6 kHz par construction.
         """
         n_hote = len(x)
+        if self.preampli is not None:
+            x = self.preampli(x)
         if self.emphase:
             x = _sig.sosfilt(self.pre_sos, x)
         x = _sig.sosfilt(self.aa_sos, x)

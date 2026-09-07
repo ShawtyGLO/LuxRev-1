@@ -285,6 +285,30 @@ un canal les lignes courtes et à l'autre les longues, ce qui **déséquilibre l
 les deux canaux** (un côté brillant, un côté sombre). Le milieu/côté élargit sans toucher
 au timbre de chaque canal. Gardé en réserve si la plage haute déçoit à l'oreille.
 
+### 🔜 Piste reportée — élargissement par modulation (« chorussy »)
+
+Proposée par l'utilisateur le 2026-09-07, après validation de STÉRÉO : *« on pourra aussi
+ajouter une fonction chorussy pour donner une sensation plus large, ou simplement un mode
+à part ».*
+
+**Reportée hors v1**, conformément au principe de périmètre borné — la façade est complète
+et validée, on ne rouvre pas.
+
+⚠️ **À ne pas confondre avec CHORUSING, qui existe déjà dans le moteur.** Le vocabulaire
+Lexicon appelle CHORUSING la modulation qui *randomise les temps de retard* à l'intérieur
+du tank (`mod_profondeur`, `mod_hz`) — elle sert à casser les modes, pas à élargir. Ce que
+propose l'utilisateur est autre chose : une modulation **en sortie**, désaccordée entre L
+et R, qui crée de la décorrélation *variable dans le temps* là où le milieu/côté ne fait
+que doser une décorrélation statique.
+
+C'est d'ailleurs le bon complément à la limite identifiée sur STÉRÉO : à 100 % la
+corrélation est déjà au plancher, donc élargir davantage ne peut venir que d'un mécanisme
+qui *fabrique* de la décorrélation, pas d'un qui la dose.
+
+**Question de forme à trancher le jour venu** : bouton sur la façade, ou mode à part comme
+le suggère l'utilisateur. Un mode à part a un avantage — il assume que ce n'est plus le
+LXP-1, alors qu'un bouton de façade suggère que si.
+
 ### ⛔ ÉPOQUE — écarté, et pas seulement reporté
 
 Un axe qui aurait fait varier ensemble la fréquence interne, le mur anti-image, la
@@ -307,23 +331,62 @@ Façade fidèle et simple, plus un onglet développé façon Arturia LX-24, avec
 (Size, Diffusion, Definition, Treble Decay, Bass Multiply, Crossover, High/Low Cut, Shape,
 Spread, Chorusing) — voir la note `LuxRev-1 - Vocabulaire Lexicon` du vault. **Hors v1.**
 
-## 7. Étage d'entrée — à reprendre
+## 7. Étage d'entrée — ✅ tranché 2026-09-07
 
-Trois captures NAM (`Input Gain 2 / 5 / 7`) dans
-`Impulse Responce LXP-1/Préamp IR NAM/`. Ce sont des **WaveNet**, donc non linéaires :
-trois positions de gain ne se capturent que s'il y a de la saturation à capturer.
+**Décision utilisateur** : *« on part sur une version custom neutre avec le bon THD ».*
+Les trois captures NAM sont abandonnées comme source. Quatre lots de rendus ont donné des
+fichiers **identiques au bit près** sur les trois positions de gain, et la seule mesure
+exploitable donnait **36 % de THD contre 0,07 % au manuel** — un facteur 500. Elles ne
+décrivent pas le LXP-1.
 
-**Décision : ne pas réimplémenter le réseau.** L'architecture est une variante récente
-(`SlimmableContainer`, 2 sous-modèles sélectionnés par niveau, `kernel_sizes` variables,
-`bottleneck`, `layer1x1`) dont l'ordre d'aplatissement des poids n'est pas documenté dans
-le fichier. Une implémentation numpy serait invérifiable — sans référence pour la comparer,
-une erreur subtile produirait des courbes plausibles et fausses, qui empoisonneraient
-silencieusement les cibles. On mesure au rendu, comme on mesurerait du matériel.
+`_proto/preampli.py` construit donc un étage conforme à ce que le manuel de service **dit**
+de l'étage réel, sans modéliser aucune capture.
 
-Protocole complet : [`_proto/PROTOCOLE_MESURE.md`](_proto/PROTOCOLE_MESURE.md).
-Signaux déjà générés dans `_proto/signaux/`. 12 rendus à faire, ~1 h.
+**Deux déductions, et leur justification :**
 
----
+1. **Distorsion symétrique, harmoniques impaires seulement.** Le manuel dit « aucun
+   transformateur d'entrée », pot double R52, ampli-op uPC4570. Pas de transformateur, pas
+   de tube, pas d'étage asymétrique : rien qui produise du rang 2. Ajouter une « chaleur »
+   de rang 2 ici reviendrait à inventer un composant que le manuel dit absent.
+2. **Calibration au haut de la plage.** « THD < 0,07 %, plage d'entrée −20 à +15 dBV » se
+   lit comme une seule ligne : sur toute la plage, la THD reste sous 0,07 %. On cale donc
+   0,07 % à **+15 dBV**, ce qui rend l'étage plus propre partout en dessous.
+
+| entrée | THD | rang 2 | rang 3 |
+|---:|---:|---:|---:|
+| −20 dBV | 0,0000 % | 0,0000 % | 0,0000 % |
+| 0 dBV | 0,0022 % | 0,0000 % | 0,0022 % |
+| **+15 dBV** | **0,0700 %** | 0,0000 % | 0,0700 % |
+| +20 dBV | 0,2204 % | 0,0000 % | 0,2204 % |
+
+⚠️ **L'étage est désactivé par défaut** (`preampli_db=None`). Les 12 programmes ont été
+accordés sans lui ; l'activer par défaut déplacerait la référence validée à l'oreille.
+Vérifié : écart 0,000e+00 avec le rendu de référence.
+
+⚠️ **Et il est inaudible à niveau normal — c'est correct.** Le grain du LXP-1 ne vient pas
+de son préampli, il vient de la quantification 16 bits et de la pré-accentuation dans le
+tank. Un préampli qui « s'entend » serait une faute de clone.
+
+### ⛔ Ce qu'on ne peut PAS mesurer : la THD en wet
+
+Le manuel spécifie « THD < 0,07 % **en wet** ». Impossible à reproduire comme test :
+
+| condition | THD mesurée |
+|---|---:|
+| chaîne complète, **préampli désactivé** | 0,572 % |
+| préampli actif, entrée 0 dBV | 0,572 % |
+| préampli actif, entrée +15 dBV | 0,585 % |
+| préampli actif, entrée +20 dBV | 0,737 % |
+
+Le plancher de 0,57 % est là **sans préampli**, et il ne bouge pas avec le niveau. Ce n'est
+donc pas de la distorsion : c'est l'énergie propre de la réverbe aux fréquences
+harmoniques, produite par la modulation aléatoire des lignes. Vérifié aussi que ce n'est
+pas la quantification — 24 et 32 bits donnent le même chiffre.
+
+**Conclusion : mesurer une THD à travers une réverbe modulée ne mesure pas la distorsion.**
+La seule mesure valide de l'étage est celle faite **en isolation**, tableau ci-dessus. La
+contribution du préampli ne devient visible qu'au-dessus de +15 dBV, c'est-à-dire au-delà
+de la plage d'entrée du manuel — exactement ce qu'on attend d'un étage conforme.
 
 ## 8. Ce qu'aucune mesure ne donnera
 
