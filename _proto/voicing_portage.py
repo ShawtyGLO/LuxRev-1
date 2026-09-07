@@ -113,6 +113,17 @@ def main():
     rendre_phases()
 
     accord = json.loads(ACCORD.read_text(encoding="utf-8"))
+
+    # ⚠️ On repart du FIR REELLEMENT EN PLACE dans le build qu'on vient de
+    # mesurer, pas de celui du prototype. Sinon l'ajustement mesure le residu
+    # d'un moteur et corrige les coefficients d'un autre : ce n'est pas une
+    # iteration, ca ne converge pas. Relancer plusieurs fois affine desormais.
+    base = json.loads(SORTIE.read_text(encoding="utf-8")) if SORTIE.exists() else {}
+    if base:
+        print("  depart : le voicing du build courant (iteration)")
+    else:
+        print("  depart : le voicing du prototype (premiere passe)")
+
     out, avant, apres = {}, [], []
 
     print(f"\n  {'programme':11s} {'residu avant':>13s} {'residu apres':>13s}")
@@ -129,30 +140,32 @@ def main():
         obtenu = np.mean(mesures, axis=0)
 
         residu = obtenu - vise
-        corr = fir_correcteur(residu)
 
-        # Le nouveau FIR est l'ancien SUIVI de la correction. On les convolue puis
-        # on retaille : garder deux FIR en serie doublerait la latence et le cout.
-        ancien = np.array(accord[cle]["correction_fir"], dtype=float)
-        total = np.convolve(ancien, corr)
-        c = len(total) // 2
-        demi = N_TAPS // 2
-        total = total[c - demi:c + demi + 1] * np.hamming(N_TAPS)
+        # ⚠️ On CONCOIT le FIR total d'un coup, on ne convolue pas l'ancien avec
+        # une correction. La premiere version faisait convolve(ancien, correction)
+        # puis retaillait a 63 points avec une fenetre : la troncature detruisait
+        # justement la reponse qu'on venait de calculer. Elle promettait 0,40 dB
+        # et en rendait 1,23.
+        ancien = np.array(base.get(cle, accord[cle]["correction_fir"]), dtype=float)
+        _, h_anc = sig.freqz(ancien, worN=np.array(GRILLE) * np.pi / (FS / 2))
+        vise_db = db(np.abs(h_anc)) - residu          # reponse totale voulue
+        total = fir_correcteur(-vise_db)              # fir_correcteur inverse son entree
 
         out[cle] = [float(v) for v in total]
         avant.append(np.abs(residu).mean())
 
-        # verification : ce que la correction annonce annuler
-        w, h = sig.freqz(corr, worN=np.array(GRILLE) * np.pi / (FS / 2))
-        apres.append(np.abs(residu + db(np.abs(h))).mean())
+        # ce que le FIR obtenu annonce : sa reponse contre celle qu'on visait
+        _, h_tot = sig.freqz(total, worN=np.array(GRILLE) * np.pi / (FS / 2))
+        apres.append(np.abs(db(np.abs(h_tot)) - vise_db).mean())
         print(f"  {court:11s} {avant[-1]:12.2f} dB {apres[-1]:12.2f} dB")
 
     SORTIE.write_text(json.dumps(out, indent=1), encoding="utf-8")
     print("\n  " + "-" * 40)
     print(f"  residu moyen : {np.mean(avant):.2f} dB  ->  {np.mean(apres):.2f} dB")
     print(f"  ecrit : {SORTIE.relative_to(RACINE)}")
-    print("\n  ⚠️ Ce chiffre est ce que la correction PROMET. Il faut le verifier")
-    print("     sur un nouveau rendu apres regeneration de Programmes.h.")
+    # ⚠️ Ce chiffre est ce que la conception PROMET, pas ce qu'elle obtient :
+    #    il faut le verifier sur un nouveau rendu apres regeneration.
+    print("\n  A VERIFIER sur un nouveau rendu apres regeneration de Programmes.h.")
 
 
 if __name__ == "__main__":
