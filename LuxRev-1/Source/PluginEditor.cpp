@@ -173,9 +173,13 @@ void Ecran::paint (juce::Graphics& g)
 
     auto inner = zone.reduced (12.0f, 11.0f);
 
-    auto colonne = inner.removeFromLeft (34.0f);
+    // ⚠️ Le bandeau de headroom passe a gauche sur toute la hauteur, avec son
+    // titre a l'horizontale. Range en colonne etroite avec un titre vertical, il
+    // etait illisible — et c'est le seul afficheur qui doit se lire d'un coup
+    // d'oeil pendant qu'on joue.
+    auto colonne = inner.removeFromLeft (62.0f);
     dessinerHeadroom (g, colonne);
-    inner.removeFromLeft (10.0f);
+    inner.removeFromLeft (12.0f);
 
     auto haut = inner.removeFromTop (22.0f);
     g.setColour (pal.lueurFaible);
@@ -197,9 +201,11 @@ void Ecran::paint (juce::Graphics& g)
     g.drawLine (bas.getX(), bas.getY(), bas.getRight(), bas.getY(), 1.0f);
     bas.removeFromTop (5.0f);
 
-    dessinerCercles (g, bas.removeFromLeft (84.0f));
-    bas.removeFromLeft (14.0f);
-    dessinerSpectre (g, bas.removeFromLeft (juce::jmin (190.0f, bas.getWidth())));
+    // Les deux afficheurs se partagent la largeur a parts egales, au lieu d'etre
+    // tasses a gauche avec du vide a droite.
+    const float moitie = bas.getWidth() * 0.5f;
+    dessinerCercles (g, bas.removeFromLeft (moitie).reduced (2.0f, 0.0f));
+    dessinerSpectre (g, bas.reduced (2.0f, 0.0f));
 }
 
 void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
@@ -366,31 +372,34 @@ void Ecran::dessinerHeadroom (juce::Graphics& g, juce::Rectangle<float> z)
 {
     // Quatre temoins comme sur les unites Lexicon. Le quatrieme est le plafond
     // d'entree du manuel (+15 dBV) : au-dela, l'etage d'entree ecrete.
+    //
+    // ⚠️ C'est le gain d'ENTREE qui decide ou l'on se situe dans cette plage.
+    // Sans lui le quatrieme temoin ne s'allumait qu'au-dessus de 0 dBFS, ce qui
+    // n'arrive presque jamais — le bandeau ne servait a rien.
     static constexpr float seuils[4] = { -24.0f, -12.0f, -4.0f, 0.0f };
-    constexpr float hb = 12.0f, gap = 4.0f;
-    const float total = 4 * hb + 3 * gap;
-
-    auto bandeau = z.removeFromRight (15.0f).withHeight (total).withY (z.getBottom() - total);
-    for (int i = 0; i < 4; ++i)
-    {
-        const auto r = juce::Rectangle<float> (bandeau.getX(),
-                                               bandeau.getBottom() - (i + 1) * hb - i * gap,
-                                               bandeau.getWidth(), hb);
-        const bool on = niveauDb >= seuils[i];
-        if (on && i == 3) g.setColour (juce::Colour (0xffe5623c));
-        else if (on)      g.setColour (pal.lueur.withAlpha (0.78f));
-        else              g.setColour (pal.lueur.withAlpha (0.11f));
-        g.fillRect (r);
-    }
+    static const char* etiquettes[4] = { "-24", "-12", "-4", "0" };
 
     g.setColour (pal.lueurFaible);
-    g.setFont (juce::FontOptions (7.5f));
-    juce::Graphics::ScopedSaveState s (g);
-    g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi,
-                                                     z.getRight() - 4.0f, bandeau.getBottom()));
-    g.drawText ("HEADROOM",
-                juce::Rectangle<float> (z.getRight() - 4.0f, bandeau.getBottom() - 5.0f, total, 10.0f),
-                juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (8.5f).withStyle ("bold"));
+    g.drawText ("HEADROOM", z.removeFromTop (12.0f), juce::Justification::centredLeft);
+    z.removeFromTop (4.0f);
+
+    const float h = juce::jmin (16.0f, (z.getHeight() - 3 * 5.0f) / 4.0f);
+    for (int i = 0; i < 4; ++i)
+    {
+        auto ligne = juce::Rectangle<float> (z.getX(), z.getY() + i * (h + 5.0f), z.getWidth(), h);
+        auto txt = ligne.removeFromRight (20.0f);
+        const bool on = niveauDb >= seuils[3 - i];      // le plus fort en haut
+
+        if (on && i == 0) g.setColour (juce::Colour (0xffe5623c));
+        else if (on)      g.setColour (pal.lueur.withAlpha (0.8f));
+        else              g.setColour (pal.lueur.withAlpha (0.10f));
+        g.fillRoundedRectangle (ligne.reduced (0.0f, 1.0f), 1.5f);
+
+        g.setColour (on ? pal.lueur : pal.lueurFaible.withAlpha (0.7f));
+        g.setFont (juce::FontOptions (8.0f));
+        g.drawText (etiquettes[3 - i], txt, juce::Justification::centredRight);
+    }
 }
 
 //==============================================================================
@@ -425,6 +434,10 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
 
     // ⚠️ Les trois commandes qui vont au-dela de la machine ont un CENTRE : leur
     // arc part de la position neutre, qui redonne exactement le LXP-1 mesure.
+    // ⚠️ ENTREE est place AVANT Decay parce qu'il est avant dans la chaine :
+    // il precede l'etage d'entree, donc c'est lui qui decide ou l'on se situe
+    // dans la plage du manuel et ce que le bandeau de headroom affiche.
+    construireBouton (sEntree,   lEntree,   "ENTREE",    "entree",    0.5f);
     construireBouton (sDecay,    lDecay,    "DECAY",     "decay",    -1.0f);
     construireBouton (sPredelai, lPredelai, "PRE-DELAY", "predelai", -1.0f);
     construireBouton (sColor,    lColor,    "COLOR",     "color",     0.5f);
@@ -464,7 +477,8 @@ void LuxRevEditor::construireBouton (juce::Slider& s, juce::Label& l,
     l.setFont (juce::FontOptions (9.5f).withStyle ("bold"));
     addAndMakeVisible (l);
 
-    auto& a = (id == "decay")    ? aDecay
+    auto& a = (id == "entree")   ? aEntree
+            : (id == "decay")    ? aDecay
             : (id == "predelai") ? aPredelai
             : (id == "color")    ? aColor
             : (id == "stereo")   ? aStereo
@@ -516,7 +530,9 @@ void LuxRevEditor::timerCallback()
     // autorise des boutons nus et des etiquettes courtes.
     juce::String txt = "DECAY";
     juce::String val = juce::String (decay, 2) + " s";
-    if      (sPredelai.isMouseOverOrDragging()) { txt = "PRE-DELAY"; val = juce::String ((int) pre) + " ms"; }
+    if      (sEntree.isMouseOverOrDragging())   { txt = "ENTREE";    const float e = proc.etat.getRawParameterValue ("entree")->load();
+                                                 val = (e > 0 ? "+" : "") + juce::String (e, 1) + " dB"; }
+    else if (sPredelai.isMouseOverOrDragging()) { txt = "PRE-DELAY"; val = juce::String ((int) pre) + " ms"; }
     else if (sColor.isMouseOverOrDragging())    { txt = "COLOR";     val = juce::String ((int) color) + " %"; }
     else if (sStereo.isMouseOverOrDragging())   { txt = "STEREO";    val = juce::String ((int) ster) + " %"; }
     else if (sTilt.isMouseOverOrDragging())     { txt = "TILT";      val = (tilt > 0 ? "+" : "") + juce::String (tilt, 1) + " dB"; }
@@ -555,6 +571,17 @@ void LuxRevEditor::paint (juce::Graphics& g)
                 juce::Rectangle<float> (panneau.getRight() - 220.0f, y, 202.0f, 25.0f),
                 juce::Justification::centredRight);
 
+    // ⚠️ La ligne de lecture est posee sur du VERRE, comme dans la maquette. Du
+    // texte pose a meme le panneau ne se lit pas comme un afficheur.
+    {
+        auto v = zoneLecture.toFloat();
+        g.setGradientFill (juce::ColourGradient (pal.verre2, v.getX(), v.getY(),
+                                                 pal.verre, v.getRight(), v.getBottom(), false));
+        g.fillRoundedRectangle (v, 4.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.6f));
+        g.drawRoundedRectangle (v.reduced (0.5f), 4.0f, 1.0f);
+    }
+
     auto bande = juce::Rectangle<float> (panneau.getX() + 18.0f, y + 32.0f,
                                          panneau.getWidth() - 36.0f, 4.0f);
     juce::ColourGradient gb (pal.bande, bande.getX(), 0.0f, pal.bande, bande.getRight(), 0.0f, false);
@@ -587,6 +614,16 @@ void LuxRevEditor::resized()
     zone.removeFromTop (10);
 
     auto rangee = zone.removeFromTop (118);
+
+    // ENTREE est plus petit que les six autres : c'est un reglage de niveau, pas
+    // une commande de caractere, et la facade doit le dire.
+    {
+        auto c = rangee.removeFromLeft (72);
+        lEntree.setBounds (c.removeFromTop (16));
+        sEntree.setBounds (c.reduced (10, 10));
+    }
+    rangee.removeFromLeft (8);
+
     juce::Slider* sl[] = { &sDecay, &sPredelai, &sColor, &sStereo, &sTilt, &sMix };
     juce::Label*  la[] = { &lDecay, &lPredelai, &lColor, &lStereo, &lTilt, &lMix };
     const int pas = rangee.getWidth() / 6;
@@ -597,6 +634,7 @@ void LuxRevEditor::resized()
         sl[i]->setBounds (c.reduced (4, 2));
     }
 
-    zone.removeFromTop (6);
-    lecture.setBounds (zone.removeFromTop (28).reduced (8, 0));
+    zone.removeFromTop (8);
+    zoneLecture = zone.removeFromTop (30);
+    lecture.setBounds (zoneLecture.reduced (14, 0));
 }

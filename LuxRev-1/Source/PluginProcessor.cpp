@@ -59,10 +59,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout LuxRevProcessor::construireP
         NormalisableRange<float> (-9.0f, 9.0f, 0.1f), 0.0f,
         AudioParameterFloatAttributes().withLabel ("dB")));
 
+    // ⚠️ Mix a 50 % par defaut, pas 100 %. Un plugin qui demarre en tout-humide
+    // suppose un depart d'auxiliaire ; en insertion — le cas le plus courant —
+    // il fait disparaitre le signal sec, ce qui se lit comme un bug.
     l.add (std::make_unique<AudioParameterFloat> (
         ParameterID { "mix", 1 }, "Mix",
-        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f,
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f,
         AudioParameterFloatAttributes().withLabel ("%")));
+
+    // ⚠️ Gain d'ENTREE, place avant l'etage d'entree — donc c'est lui qui decide
+    // ou l'on se situe dans la plage du manuel (-20 a +15 dBV) et ce que le
+    // bandeau de headroom affiche. Sans lui, le quatrieme temoin ne s'allume
+    // qu'au-dessus de 0 dBFS, ce qui n'arrive presque jamais : le bandeau ne
+    // servait a rien.
+    l.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { "entree", 1 }, "Entree",
+        NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f,
+        AudioParameterFloatAttributes().withLabel ("dB")));
 
     return l;
 }
@@ -82,6 +95,7 @@ LuxRevProcessor::LuxRevProcessor()
     pStereo    = etat.getRawParameterValue ("stereo");
     pTilt      = etat.getRawParameterValue ("tilt");
     pMix       = etat.getRawParameterValue ("mix");
+    pEntree    = etat.getRawParameterValue ("entree");
 }
 
 bool LuxRevProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -185,16 +199,19 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     // --- entree mono : la machine n'a qu'une entree, c'est un 1/4" asymetrique
     // 50 kOhm (manuel de service). Sommer avant le tank est donc fidele, pas une
     // simplification.
+    const float gEntree = juce::Decibels::decibelsToGain (pEntree->load());
+
     float* mono = tampon.getWritePointer (0);
     if (nEntrees >= 2)
     {
         const float* g = buffer.getReadPointer (0);
         const float* d = buffer.getReadPointer (1);
-        for (int i = 0; i < n; ++i) mono[i] = 0.5f * (g[i] + d[i]);
+        for (int i = 0; i < n; ++i) mono[i] = 0.5f * (g[i] + d[i]) * gEntree;
     }
     else if (nEntrees == 1)
     {
         juce::FloatVectorOperations::copy (mono, buffer.getReadPointer (0), n);
+        juce::FloatVectorOperations::multiply (mono, gEntree, n);
     }
     else
     {
@@ -229,11 +246,15 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         float* d = buffer.getWritePointer (1);
         for (int i = 0; i < n; ++i)
         {
+            // ⚠️ Fondu a PUISSANCE CONSTANTE, pas lineaire. Le sec et l'humide
+            // sont decorreles : un fondu lineaire fait perdre 3 dB au milieu de
+            // la course, ce qui s'entend comme un creux de volume a 50 %.
             const float m = mixLisse.getNextValue();
-            const float sec = 1.0f - m;
+            const float a = m * juce::MathConstants<float>::halfPi;
+            const float gh = std::sin (a), gs = std::cos (a);
             const float dg = g[i], dd = d[i];
-            g[i] = dg * sec + wetL[i] * m;
-            d[i] = dd * sec + wetR[i] * m;
+            g[i] = dg * gs + wetL[i] * gh;
+            d[i] = dd * gs + wetR[i] * gh;
         }
     }
     else if (nSorties == 1)
@@ -242,7 +263,8 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         for (int i = 0; i < n; ++i)
         {
             const float m = mixLisse.getNextValue();
-            g[i] = g[i] * (1.0f - m) + 0.5f * (wetL[i] + wetR[i]) * m;
+            const float a = m * juce::MathConstants<float>::halfPi;
+            g[i] = g[i] * std::cos (a) + 0.5f * (wetL[i] + wetR[i]) * std::sin (a);
         }
     }
 }

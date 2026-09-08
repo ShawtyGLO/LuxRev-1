@@ -76,10 +76,14 @@ public:
     }
 
     /** Change le retard sans allouer (pre-delai : 0 a 246 ms sur la machine). */
+    /** ⚠️ On NE remet PAS l'index a zero. Le faire relance la lecture au debut
+        du tampon, donc renvoie d'un coup un morceau de signal deja joue — un
+        claquement franc a chaque changement de longueur. Laisser l'index ou il
+        est ne coute qu'un saut de phase, sans rupture d'amplitude. */
     void poserLongueur (int n)
     {
-        const int m = std::clamp (n, 1, capacite);
-        if (m != taille) { taille = m; i = 0; }
+        taille = std::clamp (n, 1, capacite);
+        if (i >= taille) i = 0;
     }
 
     void vider() { std::fill (buf.begin(), buf.end(), 0.0); i = 0; }
@@ -167,14 +171,32 @@ public:
         calculerPrises();
     }
 
-    /** Change le retard SANS allouer — COLOR balaie `taille` en continu, et
-        reconstruire les huit lignes a chaque mouvement du bouton allouerait
-        dans le fil audio. */
+    /** Change le retard SANS allouer, et SANS SAUTER.
+
+        ⚠️ COLOR balaie `taille` en continu : a chaque bloc, le retard vise une
+        nouvelle valeur. Le poser d'un coup deplace le point de lecture d'un ou
+        deux echantillons d'un bloc a l'autre, dans une boucle qui recircule —
+        ce qui s'entend comme un gresillement tant qu'on tient le bouton. Le
+        retard glisse donc vers sa cible en ~80 ms, ce qui revient a un leger
+        glissement de hauteur : exactement ce qu'on attend en tournant la taille
+        d'une salle. */
     void poserNominal (int n)
     {
-        nominal = std::clamp (n, 4, taille - margeMax - 4);
+        cible = (double) std::clamp (n, 4, taille - margeMax - 4);
+        nominal = (int) std::lround (cible);
         calculerPrises();
     }
+
+    /** Rejoint la cible SANS glisser.
+
+        ⚠️ A appeler a chaque remise a zero. Sans ca, les lignes partent de leur
+        longueur maximale — celle pour laquelle le tampon est dimensionne — et
+        mettent 80 ms a rejoindre la longueur du programme : la reponse
+        impulsionnelle mesuree juste apres serait celle d'une autre salle. */
+    void caler() noexcept { courant = cible; }
+
+    /** Coefficient de glissement, pose une fois a la preparation. */
+    void poserGlissement (double k) noexcept { kGliss = k; }
 
     void calculerPrises()
     {
@@ -191,7 +213,8 @@ public:
 
     inline Ech traiter (Ech x, double decalage) noexcept
     {
-        const double p = (double) nominal + decalage;
+        courant += (cible - courant) * kGliss;
+        const double p = courant + decalage;
         int    i0 = (int) p;
         double f  = p - (double) i0;
         if (f < 0.5) { i0 -= 1; f += 1.0; }     // l'allpass du 1er ordre se tient
@@ -213,6 +236,7 @@ public:
 private:
     std::vector<Ech> buf;
     int taille = 8, i = 0, nominal = 4, margeMax = 0;
+    double cible = 4.0, courant = 4.0, kGliss = 4.0e-4;
     int prises[kNPrises] { 1, 1, 1, 1, 1, 1 };
     Ech yi = 0.0;
 };

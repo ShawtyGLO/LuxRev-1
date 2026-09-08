@@ -51,7 +51,12 @@ PAS_MS = 5.0
 DUREE = 4.0
 DECALAGE = 200                 # l'impulsion, en echantillons
 PLANCHER_DB = -75.0            # au-dela, la queue est sous le bruit : on ferme
-GAIN_MAX = 4.0                 # le profil ne doit pas rattraper l'irrattrapable
+# ⚠️ Plafond de gain BAS, et c'est deliberé. A 4,0 le profil partait en butee
+# sur les premiers points — la ou le tank n'a pas encore etabli sa queue et ou
+# le rapport machine/tank explose — ce qui amplifiait l'attaque quatre fois et
+# deformait la forme au lieu de la corriger. Un profil d'enveloppe corrige une
+# pente, il ne doit pas fabriquer de niveau.
+GAIN_MAX = 2.0
 
 
 def enveloppe(y, pas_ms=PAS_MS):
@@ -90,8 +95,27 @@ def main():
 
         x, _ = lire_wav(RENDUS / f"CPP_{court}{suffixe}_d{DECALAGE}.wav")
         nu = enveloppe(np.abs(x[:, 0]) + np.abs(x[:, 1]))
-        dec = DECALAGE // int(FS * PAS_MS * 1e-3)
-        nu = nu[dec:dec + len(vise)]
+
+        # ⚠️ ALIGNEMENT PAR CORRELATION, pas par une position supposee.
+        #
+        # Le rendu est en retard sur la cible de la position de l'impulsion PLUS
+        # la latence declaree du plugin — les deux FIR a phase lineaire et
+        # l'avance du reechantillonnage, soit pres de 8 ms. Sur `inverse`, dont
+        # le profil monte a pic dans les 100 premieres millisecondes, ce decalage
+        # produisait 46 dB d'ecart apparent a t = 0 : l'ajustement essayait alors
+        # de le rattraper en montant le gain en butee, ce qui deformait tout le
+        # profil. Chercher le decalage plutot que le supposer supprime le
+        # probleme a la racine.
+        best, decal = None, 0
+        for d in range(0, 12):
+            a = nu[d:d + len(vise)]
+            if len(a) < len(vise):
+                break
+            u0 = vise > -45.0
+            err = np.mean(np.abs((a - np.mean(a[u0]) + np.mean(vise[u0]))[u0] - vise[u0]))
+            if best is None or err < best:
+                best, decal = err, d
+        nu = nu[decal:decal + len(vise)]
         n = min(len(vise), len(nu))
         vise, nu = vise[:n], nu[:n]
 
@@ -111,9 +135,11 @@ def main():
 
         # lissage leger : le releve de la machine est bruite point a point, et un
         # profil qui tremble s'entendrait comme une modulation d'amplitude
-        noyau = np.hanning(5); noyau /= noyau.sum()
+        noyau = np.hanning(9); noyau /= noyau.sum()
         prof = np.convolve(prof, noyau, mode="same")
-        prof[0] = 1.0                            # l'attaque n'est pas touchee
+        # ⚠️ On ne force PLUS le premier point a 1,0. Sur , dont le
+        # profil demarre bas, cela creait un echelon de 1,0 a 0,1 en un
+        # echantillon — un claquement a chaque attaque.
 
         if base:                                 # on affine le profil en place
             anc = np.array(base[cle][:len(prof)], dtype=float)

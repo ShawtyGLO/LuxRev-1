@@ -260,14 +260,24 @@ public:
 
         // --- allocations dimensionnees au PIRE cas, une fois pour toutes
         const double fs = kFsInterne;
-        predelai.preparer (std::max ((int) std::lround (kPredelaiMaxMs * 1e-3 * fs), 1));
+        // ⚠️ Le pre-delai est une ligne a lecture fractionnaire, pas un simple
+        // tampon circulaire : le bouton Pre-Delay se tourne en continu, et une
+        // longueur qui saute d'un echantillon a l'autre claque a chaque bloc.
+        predelai.preparer ((int) std::lround (kPredelaiMaxMs * 1e-3 * fs) + 8, 4);
 
         for (int k = 0; k < 4; ++k)
             diff[(size_t) k].preparer (transpose (kDiffuseurLongueurs[k], fs), 0.0f);
 
         const int margeMax = (int) (kProfondeurMax * kTailleMax) + 2;
+        // ~80 ms de glissement : assez lent pour ne pas claquer, assez rapide
+        // pour que le bouton reponde.
+        const double kGliss = 1.0 - std::exp (-1.0 / (0.080 * fs));
+        predelai.poserGlissement (kGliss);
         for (int k = 0; k < kNFdn; ++k)
+        {
             lignes[(size_t) k].preparer (transpose (kFdnLongueurs[k], fs, kTailleMax), margeMax);
+            lignes[(size_t) k].poserGlissement (kGliss);
+        }
 
         // L'etalement reste sous le plus court des retards de boucle (contrainte
         // portee sur la FIG. 2d du brevet Jot), donc borne par la ligne la plus
@@ -294,15 +304,16 @@ public:
         aa.vider(); murL.vider(); murR.vider(); tiltL.vider(); tiltR.vider();
         sincL.vider(); sincR.vider(); voicingL.vider(); voicingR.vider();
 
-        predelai.vider();
+        predelai.vider(); predelai.caler();
         for (auto& d : diff)       d.vider();
-        for (auto& l : lignes)     l.vider();
+        for (auto& l : lignes)     { l.vider(); l.caler(); }
         for (auto& d : injections) d.vider();
         std::fill (ffBuf.begin(), ffBuf.end(), 0.0); ffI = 0;
         for (int k = 0; k < kNFdn; ++k) { etats[k] = sorties[k] = eBass[k] = lfoEtat[k] = 0.0; }
         eTreble = fbEtat = sL = sR = hL = hR = 0.0;
-        rapide = lent = 0.0f;
-        depuisDeclenchement = 1 << 20;
+        rapide = lent = pic = 0.0f;
+        gainPorte = 0.0f;
+        arme = true;
         posPorte = (double) nPorte;
     }
 
@@ -323,7 +334,7 @@ public:
         // sur les programmes courts.
         profondeur = reg.modProfondeur * reg.taille;
 
-        predelai.poserLongueur (std::max ((int) std::lround (reg.predelaiMs * 1e-3 * fs), 1));
+        predelai.poserNominal (std::max ((int) std::lround (reg.predelaiMs * 1e-3 * fs), 1));
         kTreble = coefLp (reg.trebleHz, fs);
 
         nDiff = std::clamp (reg.nDiffuseurs, 0, 4);
@@ -489,8 +500,13 @@ public:
             // fermeture — et sur une porte, c'est le flanc qui fait le son.
             if (porte != nullptr && porteActive)
             {
-                const float g = lirePorte();
-                L *= g; R *= g;
+                // ⚠️ Le gain est LISSE. Le profil part de sa premiere valeur au
+                // declenchement, alors que la sortie etait a zero : le poser d'un
+                // coup fait un echelon, donc un claquement a chaque attaque —
+                // c'est ce qu'on entendait sur `inverse`. Trois millisecondes
+                // suffisent a l'effacer sans emousser la fermeture de la porte.
+                gainPorte += kLissePorte * (lirePorte() - gainPorte);
+                L *= gainPorte; R *= gainPorte;
                 posPorte += pasPorte;
             }
 
@@ -551,7 +567,7 @@ private:
         eTreble += kTreble * (u - eTreble);
         Ech v = eTreble;
         for (int k = 0; k < nDiff; ++k) v = diff[(size_t) k].traiter (v);
-        v = predelai.pousser (v);
+        v = predelai.traiter (v, 0.0);
         fbEtat = v;
 
         Ech somme = 0.0;
@@ -677,7 +693,7 @@ private:
     Fir sincL, sincR, voicingL, voicingR;
     bool tiltActif = false;
 
-    Delai predelai;
+    LigneModulee predelai;
     Allpass diff[4];
     LigneModulee lignes[kNFdn];
     Delai injections[kNFdn];
@@ -711,11 +727,22 @@ private:
         rapide += (a > rapide ? kAttaqueRapide : kRelacheRapide) * (a - rapide);
         lent   += (a > lent   ? kAttaqueLente  : kRelacheLente)  * (a - lent);
 
-        if (depuisDeclenchement < kVerrou) { ++depuisDeclenchement; return; }
+        // ⚠️ RE-ARMEMENT, pas verrou de duree. Un verrou fixe de 10 ms laissait
+        // une meme attaque redeclencher des qu'il expirait, tant que le niveau
+        // restait haut : la porte se rouvrait sans arret et ne savait plus quand
+        // s'arreter. On exige maintenant que le signal RETOMBE nettement sous le
+        // pic qui a declenche avant d'accepter une nouvelle attaque.
+        if (! arme)
+        {
+            pic = std::max (pic, rapide);
+            if (rapide < pic * kReArmement) arme = true;
+            return;
+        }
         if (rapide > kSeuilPlancher && rapide > lent * kFacteurAttaque)
         {
             posPorte = 0.0;
-            depuisDeclenchement = 0;
+            arme = false;
+            pic = rapide;
         }
     }
 
@@ -735,15 +762,20 @@ private:
     static constexpr float kAttaqueLente   = 0.004f;
     static constexpr float kRelacheLente   = 0.0008f;
     static constexpr float kFacteurAttaque = 2.5f;
-    static constexpr float kSeuilPlancher  = 1.0e-4f;
-    static constexpr int   kVerrou         = 480;   // ~10 ms a 48 kHz
+    static constexpr float kSeuilPlancher  = 3.0e-4f;
+    static constexpr float kReArmement     = 0.45f;  // retomber a -7 dB du pic
+    // ⚠️ Tres court : 0,17 ms. Il ne sert qu'a effacer la MARCHE au
+    // declenchement, quand le gain passe de zero a la premiere valeur du profil.
+    // Plus lent, il deforme le profil lui-meme — mesure faite, un lissage a 1 ms
+    // faisait passer l'ecart de forme d'`inverse` de 1,7 a 5,4 dB.
+    static constexpr float kLissePorte     = 0.12f;
 
     Preampli preampli;
     const float* porte = nullptr;
     int nPorte = 0;
     double posPorte = 0.0, pasPorte = 0.0;
-    float rapide = 0.0f, lent = 0.0f;
-    int depuisDeclenchement = 1 << 20;
+    float rapide = 0.0f, lent = 0.0f, pic = 0.0f, gainPorte = 0.0f;
+    bool arme = true;
 
     Bruit bruit { 20260907u };
 };

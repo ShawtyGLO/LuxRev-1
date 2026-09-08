@@ -138,14 +138,15 @@ private:
 
     Ecran ecran;
     juce::OwnedArray<juce::TextButton> cellules;      // la grille des 12 programmes
-    juce::Slider sDecay, sPredelai, sColor, sStereo, sTilt, sMix;
-    juce::Label  lDecay, lPredelai, lColor, lStereo, lTilt, lMix;
+    juce::Slider sEntree, sDecay, sPredelai, sColor, sStereo, sTilt, sMix;
+    juce::Label  lEntree, lDecay, lPredelai, lColor, lStereo, lTilt, lMix;
     juce::Label  lecture;                             // le parametre en cours de reglage
 
     juce::Rectangle<int> zoneInterrupteur;            // diode + titre : marche/arret
+    juce::Rectangle<int> zoneLecture;                 // le verre sous la ligne de lecture
 
     using Attache = juce::AudioProcessorValueTreeState::SliderAttachment;
-    std::unique_ptr<Attache> aDecay, aPredelai, aColor, aStereo, aTilt, aMix;
+    std::unique_ptr<Attache> aEntree, aDecay, aPredelai, aColor, aStereo, aTilt, aMix;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LuxRevEditor)
 };

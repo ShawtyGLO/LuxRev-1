@@ -87,6 +87,7 @@ private:
     std::atomic<float>* pStereo    = nullptr;
     std::atomic<float>* pTilt      = nullptr;
     std::atomic<float>* pMix       = nullptr;
+    std::atomic<float>* pEntree    = nullptr;
 
     int presetCourant = 0;
 
