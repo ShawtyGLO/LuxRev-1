@@ -39,6 +39,17 @@ inline constexpr float kTailleMax = 3.2f;
 inline constexpr float kProfondeurMax = 26.0f;   // vers le cremeux
 inline constexpr float kPredelaiMaxMs = 246.0f;  // Program table du manuel
 inline constexpr float kFenetreDiffMaxMs = 400.0f;
+// Retard de la voie gauche sur la droite, en periodes d'echantillonnage interne.
+// Le convertisseur unique du LXP-5 sert l'entree, puis la droite, puis la gauche :
+// un tiers de periode, soit 10,7 us a 31,25 kHz. Manuel de service, diagramme
+// « A/D SAR Conversion Timing ».
+// ⚠️ Redefinissable A LA COMPILATION seulement, et uniquement pour que les bancs de
+// tools/ puissent mesurer l'avant et l'apres. Ce n'est PAS un reglage : le plugin le
+// compile toujours a 1/3, parce que la machine n'avait pas le choix non plus.
+#ifndef LUXREV_TIERS_CONVERTISSEUR
+ #define LUXREV_TIERS_CONVERTISSEUR (1.0 / 3.0)
+#endif
+inline constexpr double kTiersConvertisseur = LUXREV_TIERS_CONVERTISSEUR;
 
 //==============================================================================
 /** Tous les parametres du moteur. Miroir des arguments de Moteur.__init__.
@@ -417,10 +428,10 @@ public:
         {
             // Decay dilate le motif : au reglage d'usine le facteur vaut 1 et le
             // profil est celui qu'on a releve sur la machine.
-            const double f = std::clamp ((double) reg.t60S / std::max (programme->t60S, 0.01f),
-                                         0.25, 2.0);
+            const double dilatation =
+                std::clamp ((double) reg.t60S / std::max (programme->t60S, 0.01f), 0.25, 2.0);
             banc.poserProfil (programme->enveloppePorte, programme->nEnveloppePorte,
-                              kPasEnveloppeMs * 1e-3 * kFsInterne, 1.0, f);
+                              kPasEnveloppeMs * 1e-3 * kFsInterne, 1.0, dilatation);
         }
 
         // ⚠️ Le dosage plafonne a 0,5, et ce n'est pas de la prudence : melanger
@@ -510,12 +521,34 @@ public:
         {
             long long k = (long long) posSortie;
             margeMinimale = std::min (margeMinimale, ecritsInterne - 1 - k);
-            k = std::min (k, ecritsInterne - 1);
-            k = std::max (k, 0LL);
+
+            // ⚠️ LE CONVERTISSEUR EST PARTAGE, ET LES DEUX VOIES NE SORTENT PAS
+            // AU MEME INSTANT.
+            //
+            // Manuel de service du LXP-5, diagramme « A/D SAR Conversion
+            // Timing » : un seul convertisseur fait trois taches par periode
+            // d'echantillonnage, dans cet ordre — conversion A/N, puis voie
+            // DROITE, puis voie GAUCHE. Le bloqueur de la gauche bascule donc
+            // un TIERS DE PERIODE apres celui de la droite, soit 10,7 us a
+            // 31,25 kHz.
+            //
+            // Ce n'est pas une option et ce n'est pas un defaut a corriger :
+            // c'est une source de decorrelation NATIVE de la machine, presente
+            // sur chaque exemplaire sorti d'usine, et elle participe a la
+            // largeur qu'on entend. On la modelise donc en dur.
+            //
+            // Modelise comme un DECALAGE DU BLOQUEUR, pas comme un retard
+            // fractionnaire filtre : la gauche tient simplement l'echantillon
+            // precedent pendant le premier tiers de periode. C'est exactement
+            // ce que fait l'echantillonneur-bloqueur, et ca ne coute rien.
+            long long kL = (long long) std::floor (posSortie - kTiersConvertisseur);
+
+            k  = std::clamp (k,  0LL, ecritsInterne - 1);
+            kL = std::clamp (kL, 0LL, ecritsInterne - 1);
             posSortie += pas;
 
-            float L = murL.traiter (sincL.traiter (anneauL[(size_t) (k & kMasque)]));
-            float R = murR.traiter (sincR.traiter (anneauR[(size_t) (k & kMasque)]));
+            float L = murL.traiter (sincL.traiter (anneauL[(size_t) (kL & kMasque)]));
+            float R = murR.traiter (sincR.traiter (anneauR[(size_t) (k  & kMasque)]));
 
             if (std::abs (reg.stereo - 1.0f) > 1e-3f)
             {
@@ -674,6 +707,49 @@ private:
     }
 
     //--------------------------------------------------------------------------
+    /** Pole du premier ordre dont le module vaut `rap` A 8 kHz.
+
+        Le filtre absorbant est y = g(1-b).x + b.y[-1], de module normalise
+
+            |H(w)| / g = (1 - b) / sqrt(1 - 2 b cos w + b^2)
+
+        ⚠️ POSER b = (1-rap)/(1+rap) atteint le rapport A NYQUIST, soit 15,6 kHz
+        ici. Or `ratioHf` est defini comme T60(8 kHz)/T60(500 Hz), releve a 8 kHz
+        sur les IR : a cette frequence le premier ordre n'a fait qu'une partie de
+        sa descente, et le rapport obtenu etait
+
+            demande 0,50 -> 0,638      demande 0,70 -> 0,812
+            demande 0,58 -> 0,714      demande 0,80 -> 0,883
+
+        d'ou les 0,87-0,91 mesures sur les douze programmes pour 0,51-0,80 vises.
+        Le parametre et la grandeur qui le mesure ne parlaient pas de la meme
+        frequence. Meme correction dans _proto/moteur.py.
+
+        Poser |H| = rap donne une quadratique en b dont les deux racines sont b
+        et 1/b — on garde celle de module inferieur a 1, seule stable.
+    */
+    static double polePourRapport (double rap) noexcept
+    {
+        // 8 kHz a la frequence interne, la bande haute d'analyse_ir.py.
+        // ⚠️ Pi en dur, PAS juce::MathConstants : ces en-tetes DSP se compilent aussi
+        // hors JUCE — c'est ce qui permet aux bancs de tools/ de mesurer exactement le
+        // meme code que le plugin. Le compilateur l'a rappele tout de suite.
+        static const double cosW = std::cos (2.0 * 3.14159265358979323846
+                                             * 8000.0 / kFsInterne);
+        const double r2 = rap * rap;
+        const double a  = 1.0 - r2;
+        if (std::abs (a) < 1e-12) return 0.0;            // filtre plat
+        const double bl = 2.0 * (r2 * cosW - 1.0);
+        const double disc = bl * bl - 4.0 * a * a;
+        if (disc <= 0.0) return 0.0;
+        const double rc = std::sqrt (disc);
+        const double b1 = (-bl - rc) / (2.0 * a);
+        if (std::abs (b1) < 1.0) return b1;
+        const double b2 = (-bl + rc) / (2.0 * a);
+        return (std::abs (b2) < 1.0) ? b2 : 0.0;
+    }
+
+    //--------------------------------------------------------------------------
     /** Gain de boucle donnant la decroissance voulue.
 
         Dans un FDN a matrice unitaire, chaque tour d'une ligne subit g une fois
@@ -699,7 +775,7 @@ private:
             const double rap = std::clamp (gHf / std::max (gDc, 1e-12), 1e-6, 0.999);
 
             gains[k] = gDc;
-            bAbs[k]  = std::clamp ((1.0 - rap) / (1.0 + rap), -0.95, 0.95);
+            bAbs[k]  = std::clamp (polePourRapport (rap), -0.95, 0.95);
 
             const double gLf = std::min (
                 std::pow (10.0, -3.0 * L / (std::max ((double) reg.t60S * rb, 1e-3) * fs)), 0.9999);

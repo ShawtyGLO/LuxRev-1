@@ -134,6 +134,18 @@ def ecart(obtenu, cible):
     return obtenu / cible - 1.0
 
 
+# Cles rangees dans le dictionnaire d'accordage mais qui ne sont PAS des arguments du
+# moteur : ce sont des resultats de mesure, exportes tels quels vers Programmes.h.
+# ⚠️ Sans ce filtre, tout rendu posterieur a la phase de compensation COLOR plante sur
+# `Moteur.__init__() got an unexpected keyword argument`. Le script s'arretait donc juste
+# avant d'ecrire ses resultats, et programmes.json datait de la signature precedente.
+HORS_MOTEUR = ("compensation_color", "compensation_lp")
+
+
+def params_moteur(p):
+    return {k: v for k, v in p.items() if k not in HORS_MOTEUR}
+
+
 def accorder(cible, iterations=3, verbeux=True):
     """Derive puis corrige les parametres du moteur pour un programme."""
     nom = cible["nom"]
@@ -180,7 +192,7 @@ def accorder(cible, iterations=3, verbeux=True):
     duree = float(np.clip((t60_cible if not impose else 1.5) * 1.4, 1.5, 4.0))
 
     def rendre_et_mesurer():
-        m = Moteur(fs=FS, **p)
+        m = Moteur(fs=FS, **params_moteur(p))
         L, R = m.reponse_impulsionnelle(duree)
         if impose:
             L = enveloppe_gate(L, FS, cible["enveloppe_db"])
@@ -305,18 +317,29 @@ def accorder(cible, iterations=3, verbeux=True):
             obt = rendre_et_mesurer()
             if not impose and obt["t60_s"]:
                 p["t60_s"] *= float(np.clip((t60_cible / obt["t60_s"]) ** 0.9, 0.5, 2.0))
-            # La cible est l'ECART entre la queue et le debut, pas le niveau de l'un ou
-            # de l'autre. C'est la seule grandeur que l'amortissement controle vraiment :
-            # un filtre statique en sortie peut assombrir tout le programme, seul un
-            # filtre DANS la boucle peut assombrir la queue plus que l'attaque.
+            # ⚠️ RETOUR AU RAPPORT DE T60, et non plus a l'ecart de spectre
+            # queue-moins-attaque (2026-09-09).
             #
-            # Regle sur la queue seule, le tuner descendait la coupure a 700-3000 Hz et
-            # detruisait le rapport T60(8k)/T60(500) (0,25 pour 0,51 vise) — parce qu'il
-            # corrigeait avec l'amortissement une couleur que le voicing traitait deja.
-            eq, ed = obt.get("ecart_hf_queue_db"), obt.get("ecart_hf_debut_db")
-            if eq is not None and ed is not None and abs(eq - ed) > 0.3:
+            # Ce substitut avait ete adopte parce que le critere direct « ne marchait
+            # pas » : le tuner s'eloignait de la cible au lieu de s'en rapprocher. La
+            # cause vient d'etre trouvee ailleurs — le filtre absorbant posait son
+            # rapport a NYQUIST alors que la cible est relevee a 8 kHz, si bien qu'aucun
+            # reglage de `ratio_hf` ne pouvait atteindre la valeur demandee. Le critere
+            # etait bon, c'est l'actionneur qui mentait.
+            #
+            # Une fois la correspondance reparee (cf. _pole_pour_rapport), les deux
+            # grandeurs decrivent la meme chose et le rapport de T60 est le meilleur des
+            # deux : il est integre par Schroeder sur toute la decroissance, la ou
+            # l'ecart de spectre depend de deux fenetres arbitraires et se laisse
+            # polluer par les reflexions primaires et par le voicing.
+            #
+            # La couleur statique reste du ressort du voicing et du filtre de sortie —
+            # une commande par grandeur mesuree, c'est la seule facon d'eviter que deux
+            # phases se disputent la meme correction.
+            ca = cible["amortissement_hf"]
+            if ca and obt.get("amortissement_hf"):
                 p["ratio_hf"] = float(np.clip(
-                    p["ratio_hf"] * 10.0 ** (-(eq - ed) / 25.0), 0.1, 1.6))
+                    p["ratio_hf"] * (ca / obt["amortissement_hf"]) ** 0.6, 0.1, 1.6))
         # Et le filtre de sortie a son tour : la taille a change le spectre sous lui.
         # Chaque phase deplace ce que la precedente avait regle ; deux reprises courtes
         # suffisent a refermer la boucle sans tout relancer.
@@ -335,7 +358,7 @@ def accorder(cible, iterations=3, verbeux=True):
         ref = dict(cible["spectre_db"])
         gr = np.array(sorted(ref), dtype=float)
         for it in range(2):
-            m = Moteur(fs=FS, **p)
+            m = Moteur(fs=FS, **params_moteur(p))
             L, R = m.reponse_impulsionnelle(duree)
             if impose:
                 L = enveloppe_gate(L, FS, cible["enveloppe_db"])
@@ -373,7 +396,7 @@ def accorder(cible, iterations=3, verbeux=True):
             # retardee de 60 ms, l'onset tombe apres le palier et le saute purement et
             # simplement. La comparaison devenait vide de sens pour les programmes qui ont
             # justement un palier — c'est-a-dire ceux qu'on cherche a corriger.
-            m = Moteur(fs=FS, **p)
+            m = Moteur(fs=FS, **params_moteur(p))
             L, _ = m.reponse_impulsionnelle(duree)
             j = int(FS * p["predelai_ms"] * 1e-3)
             h = L[j:j + pas * 20]
@@ -447,8 +470,8 @@ def accorder(cible, iterations=3, verbeux=True):
     if not impose:
         comp = []
         for r in np.linspace(0.0, 1.0, 5):
-            q = macro_color(p, r)
-            m = Moteur(fs=FS, **q)
+            q = macro_color(params_moteur(p), r)
+            m = Moteur(fs=FS, **params_moteur(q))
             L, R = m.reponse_impulsionnelle(duree)
             j = onset(L)
             t, _ = temps_decroissance(schroeder_multi([L[j:], R[j:]]), FS)
@@ -480,10 +503,17 @@ def rapport(res):
     for r in res:
         c, o = r["cible"], r["obtenu"]
         note = " *(env.)*" if r["enveloppe"] else ""
+        # ⚠️ Le Δ se compte sur la valeur REELLEMENT VISEE, c'est-a-dire le RT60 nominal
+        # du manuel quand il existe. La colonne affichait le nominal et l'ecart au T60
+        # MESURE sur l'IR : deux nombres differents dans la meme ligne. On lisait donc
+        # « cible 2,60 s, obtenu 2,72 s, Δ -21 % » — trois affirmations dont deux se
+        # contredisent. Le vrai ecart sur ce programme est de +5 %, et il est sous 1 %
+        # sur huit programmes. Le T60 n'a jamais ete le probleme ; le tableau, si.
+        vise = SPECS.get(r["nom"], [c["t60_global_s"]])[0]
         L.append(
             f"| `{r['nom']}`{note} | "
-            f"{(SPECS.get(r['nom'], [c['t60_global_s']])[0]):.2f} s | "
-            f"{(o['t60_s'] or 0):.2f} s | {pct(ecart(o['t60_s'], c['t60_global_s']))} | "
+            f"{vise:.2f} s | "
+            f"{(o['t60_s'] or 0):.2f} s | {pct(ecart(o['t60_s'], vise))} | "
             f"{(c.get('rugosite_spectrale_db') or 0):.2f} | "
             f"{(o.get('rugosite_spectrale_db') or 0):.2f} | "
             f"{pct(ecart(o.get('rugosite_spectrale_db'), c.get('rugosite_spectrale_db')))} | "
@@ -542,10 +572,18 @@ def main():
         return {k: (list(np.round(v, 8)) if isinstance(v, np.ndarray) else v)
                 for k, v in d.items()}
 
-    (SORTIE / "programmes.json").write_text(json.dumps(
-        {r["nom"]: serialisable(r["params"]) for r in res}, indent=2, ensure_ascii=False),
-        encoding="utf-8")
-    rapport(res)
+    # ⚠️ FUSION, pas remplacement. Avec --programme, ecrire le seul programme accorde
+    # effacait les onze autres — et comme generer_programmes.py lit ce fichier, un essai
+    # sur un programme suffisait a vider le plugin. Un banc d'essai ne doit pas pouvoir
+    # detruire le resultat d'une campagne complete.
+    fichier = SORTIE / "programmes.json"
+    tout = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+    tout.update({r["nom"]: serialisable(r["params"]) for r in res})
+    fichier.write_text(json.dumps(tout, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Le rapport, lui, ne decrit que ce qui vient d'etre mesure : il n'a pas de sens
+    # partiel, donc on ne le reecrit que sur une campagne complete.
+    if not a.programme:
+        rapport(res)
     print(f"\n-> {SORTIE / 'ACCORD.md'}")
     print(f"-> {SORTIE / 'programmes.json'}  ({len(res)} programmes)")
 

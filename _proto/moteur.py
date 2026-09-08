@@ -35,6 +35,11 @@ FS_INTERNE = 31250
 # mesure sur les 14 IR place celui-ci vers 17 kHz. C'est cette valeur-la qu'il faut
 # implementer, sinon on coupe 8 dB d'air que la machine laisse passer.
 MUR_HZ_LXP = 17000.0
+# Frequence a laquelle `ratio_hf` est DEFINI. Ce n'est pas un choix libre : c'est la
+# bande haute de `analyse_ir.py`, donc celle ou la cible T60(8 kHz)/T60(500 Hz) est
+# relevee sur les IR. Le filtre absorbant doit atteindre son rapport ICI et nulle part
+# ailleurs, sinon le parametre et sa mesure ne parlent pas de la meme chose.
+FREQ_AMORT_HZ = 8000.0
 ORDRE_MUR = 6
 
 # Pre/de-accentuation : U31 (LF353) accentue avant l'echantillonneur-bloqueur, C48/R43 et
@@ -424,6 +429,35 @@ class DelaiModule:
 
 # ----------------------------------------------------------------------- moteur
 
+def _pole_pour_rapport(rap, cos_w):
+    """Pole du premier ordre dont le module vaut `rap` A LA PULSATION VISEE.
+
+    Le filtre absorbant est y = g(1-b).x + b.y[-1], de module normalise
+
+        |H(w)| / g = (1 - b) / sqrt(1 - 2 b cos w + b^2)
+
+    Poser |H| = rap donne une quadratique en b dont les deux racines sont b et
+    1/b — on garde donc celle de module inferieur a 1, seule stable.
+
+    A cos_w = -1 (Nyquist) la solution redonne exactement (1-rap)/(1+rap) :
+    l'ancienne formule est le cas particulier, et c'est pour ca qu'elle passait
+    inapercue.
+    """
+    r2 = rap * rap
+    a = 1.0 - r2
+    if abs(a) < 1e-12:                    # rap = 1 : filtre plat, pas de pole
+        return 0.0
+    b_lin = 2.0 * (r2 * cos_w - 1.0)
+    disc = b_lin * b_lin - 4.0 * a * a
+    if disc <= 0.0:
+        return 0.0
+    rac = np.sqrt(disc)
+    for b in ((-b_lin - rac) / (2.0 * a), (-b_lin + rac) / (2.0 * a)):
+        if abs(b) < 1.0:
+            return float(b)
+    return 0.0
+
+
 class Moteur:
     """Reverbe algorithmique parametrable.
 
@@ -655,6 +689,7 @@ class Moteur:
         # Longueur moyenne d'une ligne : convertit un T60 en gain de boucle.
         self.boucle = float(np.mean([l.nominal for l in self.lignes]))
         self.ratio_hf = float(ratio_hf)
+        self.cos_w_hf = float(np.cos(2.0 * np.pi * FREQ_AMORT_HZ / self.fs))
         self.ratio_bass = float(ratio_bass)
         # Plage du 224 : 100 Hz - 11 kHz.
         self.cross_bass_hz = float(np.clip(cross_bass_hz, 100.0, 11000.0))
@@ -767,6 +802,17 @@ class Moteur:
         # Le parametre expose n'est plus une frequence de coupure a chercher, mais le
         # RAPPORT T60(8 kHz)/T60(500 Hz) — c'est-a-dire une cible mesuree directement sur
         # les IR du LXP-1, sans intermediaire.
+        #
+        # ⚠️ ET IL DOIT ETRE ATTEINT A 8 kHz. L'ecriture naive b = (1-rap)/(1+rap) pose le
+        # rapport a NYQUIST, soit 15,6 kHz ici : a 8 kHz le premier ordre n'a fait qu'une
+        # partie de sa descente. Mesure de l'ecart, a t60 = 2,2 s :
+        #
+        #     demande 0,50 -> obtenu 0,638      demande 0,70 -> obtenu 0,812
+        #     demande 0,58 -> obtenu 0,714      demande 0,80 -> obtenu 0,883
+        #
+        # C'est l'origine de la derive constatee sur les douze programmes (0,87-0,91
+        # obtenu pour 0,51-0,80 vise) : pas un accordage qui converge mal, une
+        # correspondance fausse entre le parametre et la grandeur qui le mesure.
         r = float(np.clip(self.ratio_hf, 0.1, 2.0))
         t60_hf = max(t60_s * r, 1e-3)
         # « Bass Multiply : provides control over bass reverb time. » Exemple du manuel :
@@ -783,7 +829,7 @@ class Moteur:
             g_dc = min(float(10.0 ** (-3.0 * l.nominal / (t60_s * self.fs))), 0.9999)
             g_hf = min(float(10.0 ** (-3.0 * l.nominal / (t60_hf * self.fs))), 0.9999)
             rap = float(np.clip(g_hf / max(g_dc, 1e-12), 1e-6, 0.999))
-            b = (1.0 - rap) / (1.0 + rap)
+            b = _pole_pour_rapport(rap, self.cos_w_hf)
             self.b_abs.append(float(np.clip(b, -0.95, 0.95)))
             self.gains.append(g_dc)
             # Gain supplementaire applique a la seule bande grave, pour que le T60 y soit

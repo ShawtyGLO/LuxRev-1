@@ -162,8 +162,28 @@ la gamme ».
 **Un seul convertisseur, partagé en trois temps.** Le diagramme *A/D SAR Conversion Timing*
 montre l'ordre exact d'une période d'échantillonnage : **conversion A/N, puis voie DROITE,
 puis voie GAUCHE**. Les deux sorties ne sont donc pas converties au même instant — il y a un
-décalage d'un tiers de période environ entre L et R, soit ~10 µs. C'est petit, mais c'est
-une source de décorrélation *native* que ni le LXP-1 ni notre moteur ne modélisent.
+décalage d'un tiers de période entre L et R, soit **10,7 µs** à 31,25 kHz.
+
+✅ **Modélisé depuis le 2026-09-09, en dur et sans interrupteur** (décidé avec l'utilisateur :
+« il devrait y être comme signature et pas comme proposition »). La machine n'avait pas le
+choix, le plugin non plus. Implémenté comme un **décalage du bloqueur** et non comme un
+retard fractionnaire filtré : la gauche tient simplement l'échantillon précédent pendant le
+premier tiers de période, ce qui est exactement ce que fait un échantillonneur-bloqueur, et
+ce qui ne coûte rien.
+
+Mesuré par `tools/diag_convertisseur.cpp`, corrélation moyenne entre voies :
+
+| | sans | avec |
+|---|--:|--:|
+| programme court n° 10 | +0,104 | **+0,081** |
+| programme court n° 11 | −0,180 | **−0,102** |
+| `plate_b` (queue longue) | −0,003 | −0,004 |
+
+⚠️ **Et il ne fait rien sur les queues longues** — c'était prévisible et il fallait le
+vérifier plutôt que de l'annoncer : une queue de réverbe est déjà décorrélée par
+construction. Le décalage n'agit que là où il reste de la corrélation, c'est-à-dire dans le
+champ précoce et sur les programmes courts, où il en retire 20 à 45 %. La somme mono est
+invariante (0,004 dB sur `plate_b`).
 
 **La bande passante en wet est spécifiée** : `20 Hz – 15 kHz, +1,0 / −1,5 dB` (le sec allant
 à 20 kHz ±0,1 dB). Cela confirme du côté conception ce que les filtres 15 kHz laissaient
