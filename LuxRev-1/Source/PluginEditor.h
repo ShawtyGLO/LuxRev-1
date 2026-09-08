@@ -97,17 +97,6 @@ public:
                     float color, float stereo, float tilt, float mix);
     void poserNiveau (float db) { niveauDb = db; }
     void poserAllume (bool o) { allume = o; }
-    /** Seuil de porte, niveau vu par le declencheur, etat de la porte. */
-    void poserPorte (float seuilDb, float niveauDb_, float gain)
-        { seuil = seuilDb; niveauPorte = niveauDb_; gainPorte = gain; }
-
-    /** ⚠️ Le seuil se REGLE sur l'ecran, en tirant la ligne. C'est la seule
-        commande du plugin qui ne vient d'aucune mesure — la machine n'a pas de
-        declencheur — donc elle doit se voir et se poser a l'oreille, pas se
-        deviner. Le rappel est renvoye a l'editeur, qui tient le parametre. */
-    std::function<void (float)> surSeuil;
-    void mouseDown (const juce::MouseEvent&) override;
-    void mouseDrag (const juce::MouseEvent&) override;
 
 private:
     void dessinerCourbe (juce::Graphics&, juce::Rectangle<float>);
@@ -122,8 +111,6 @@ private:
     float decay = 2.6f, predelaiMs = 33.0f, color = 50.0f;
     float stereo = 100.0f, tilt = 0.0f, mix = 100.0f;
     float niveauDb = -100.0f;
-    float seuil = -30.0f, niveauPorte = -100.0f, gainPorte = 0.0f;
-    juce::Rectangle<float> zoneCourbe;
     bool  allume = true;
 };
 

@@ -447,6 +447,96 @@ private:
 };
 
 //==============================================================================
+/** Banc de prises non lineaire — la structure de Gate et Inverse.
+
+    ⚠️ CE N'EST PAS UNE PORTE. Deux manuels de l'epoque le disent, chacun de son
+    cote :
+
+      AMS RMX16, programme NONLIN 2 : « the sound decays only very slightly for a
+      period of time (set by the decay control), and then dies away very
+      rapidly ». REVERSE 1 : « the reverberating sound builds up for a period of
+      time then suddenly stops ».
+
+      Lexicon, parametre Slope de l'algorithme Gate : « Determines how the
+      amplitude builds over time (Size). Low Slope settings result in a higher
+      amplitude at the beginning; high Slope settings result in a higher
+      amplitude at the end. »
+
+    Aucun seuil, aucun declencheur, aucune detection. La forme EST la reponse
+    impulsionnelle du programme, et la commande de duree en regle la LONGUEUR —
+    pas une vitesse de decroissance. C'est un systeme lineaire et invariant : le
+    meme motif repond a chaque echantillon d'entree, ce qui est precisement
+    pourquoi la machine n'a rien a regler.
+
+    Realisation : une ligne a retard alimentee par l'entree DIFFUSEE, avec un
+    grand nombre de prises dont les gains suivent le profil releve. La densite
+    vient du nombre de prises ET de la diffusion en amont, qui etale chaque
+    prise en une bouffee — sans elle, un banc de prises s'entend comme un
+    battement.
+*/
+class BancNonLineaire
+{
+public:
+    static constexpr int kNPrises = 192;
+
+    void preparer (int longueurMax)
+    {
+        taille = std::max (longueurMax, 16) + 4;
+        buf.assign ((size_t) taille, 0.0);
+        i = 0;
+        for (int k = 0; k < kNPrises; ++k) { prises[k] = 1; gauche[k] = droite[k] = 0.0f; }
+    }
+
+    void vider() { std::fill (buf.begin(), buf.end(), 0.0); i = 0; }
+
+    /** `profil` donne l'amplitude a chaque pas de `pasEch` echantillons. */
+    void poserProfil (const float* profil, int nProfil, double pasEch, double gain)
+    {
+        const double duree = std::min ((double) (nProfil - 1) * pasEch, (double) (taille - 8));
+        for (int k = 0; k < kNPrises; ++k)
+        {
+            // ⚠️ Espacement pseudo-aleatoire mais STABLE. A pas regulier, un banc
+            // de prises est un peigne : il sonne comme une hauteur, pas comme une
+            // salle. Le desordre casse le peigne sans deplacer l'enveloppe.
+            const double u = (k + 0.5 + 0.38 * std::sin (k * 2.399)) / kNPrises;
+            const double t = std::clamp (u, 0.0, 1.0) * duree;
+            prises[k] = std::clamp ((int) t, 1, taille - 4);
+
+            const double x = t / pasEch;
+            const int j = std::min ((int) x, nProfil - 2);
+            const double f = x - j;
+            const double a = profil[j] + (profil[j + 1] - profil[j]) * f;
+
+            // signes alternes : deux sorties decorrelees sans retard ajoute
+            const double g = a * gain / std::sqrt ((double) kNPrises);
+            gauche[k] = (float) ((k % 4 < 2) ? g : -g);
+            droite[k] = (float) ((k % 4 == 1 || k % 4 == 2) ? g : -g);
+        }
+    }
+
+    inline void traiter (Ech x, Ech& g, Ech& d) noexcept
+    {
+        buf[(size_t) i] = x;
+        if (++i >= taille) i = 0;
+        Ech sg = 0.0, sd = 0.0;
+        for (int k = 0; k < kNPrises; ++k)
+        {
+            int j = i - prises[k]; if (j < 0) j += taille;
+            const Ech v = buf[(size_t) j];
+            sg += gauche[k] * v;
+            sd += droite[k] * v;
+        }
+        g = sg; d = sd;
+    }
+
+private:
+    std::vector<Ech> buf;
+    int taille = 16, i = 0;
+    int prises[kNPrises] {};
+    float gauche[kNPrises] {}, droite[kNPrises] {};
+};
+
+//==============================================================================
 /** Bruit blanc reproductible — meme role que default_rng(20260907) en Python.
 
     Le prototype fige la graine pour que deux rendus du meme reglage soient

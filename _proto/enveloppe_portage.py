@@ -77,14 +77,22 @@ def main():
     # `inverse` restait a 5,6 dB — sa cible a son maximum a 100 ms, pas a zero,
     # donc normaliser les deux courbes sur leur propre maximum laisse un decalage
     # que seule une iteration resorbe.
-    base = json.loads(SORTIE.read_text(encoding="utf-8")) if SORTIE.exists() else {}
-    avec = "1" if base else "0"
+    # ⚠️ Le profil n'est plus une CORRECTION de decroissance : depuis que Gate et
+    # Inverse sont un banc de prises lineaire et invariant, il n'y a plus de queue
+    # exponentielle a rattraper. Le profil EST les gains des prises, donc il part
+    # de l'enveloppe relevee et on l'affine par iteration.
+    base = {}
+    if SORTIE.exists():
+        base = json.loads(SORTIE.read_text(encoding="utf-8"))
+    else:
+        for cle, _ in PROGRAMMES:
+            c = json.loads((ICI / "mesures" / f"{cle}.json").read_text(encoding="utf-8"))
+            e = np.array([v for _, v in c["enveloppe_db"]])
+            base[cle] = [float(x) for x in 10.0 ** ((e - e.max()) / 20.0)]
     subprocess.run([str(BANC), str(RENDUS), str(DUREE), "0.5", "1.0",
-                    "0", "16", "0", str(DECALAGE), avec],
+                    "0", "16", "0", str(DECALAGE), "1"],
                    check=True, stdout=subprocess.DEVNULL)
-    suffixe = "" if base else "_nu"
-    print("  depart : " + ("le profil du build courant (iteration)"
-                           if base else "le tank seul (premiere passe)"))
+    suffixe = ""
 
     out = {}
     print("Profil d'enveloppe de Gate et Inverse — correction, pas cible brute\n")

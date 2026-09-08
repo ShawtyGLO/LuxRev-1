@@ -84,14 +84,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout LuxRevProcessor::construireP
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
         AudioParameterFloatAttributes().withLabel ("%")));
 
-    // Seuil de declenchement de Gate et Inverse. ⚠️ C'est la SEULE commande du
-    // plugin qui ne vient d'aucune mesure : la machine n'a pas de declencheur,
-    // son enveloppe part de l'impulsion. Elle est donc exposee plutot que devinee.
-    l.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { "seuil", 1 }, "Seuil de porte",
-        NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -30.0f,
-        AudioParameterFloatAttributes().withLabel ("dB")));
-
     return l;
 }
 
@@ -111,7 +103,6 @@ LuxRevProcessor::LuxRevProcessor()
     pTilt      = etat.getRawParameterValue ("tilt");
     pMix       = etat.getRawParameterValue ("mix");
     pDrive     = etat.getRawParameterValue ("drive");
-    pSeuil     = etat.getRawParameterValue ("seuil");
 }
 
 bool LuxRevProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -168,11 +159,9 @@ void LuxRevProcessor::rafraichirReglages()
     const float  tiltDb= pTilt->load();
 
     const float drive = pDrive->load();
-    const float seuil = pSeuil->load();
 
     if (ip == dernierProgramme
         && juce::approximatelyEqual (drive,  dernierDrive)
-        && juce::approximatelyEqual (seuil,  dernierSeuil)
         && juce::approximatelyEqual (decay,  dernierDecay)
         && juce::approximatelyEqual (pre,    dernierPredelai)
         && juce::approximatelyEqual (color,  dernierColor)
@@ -192,14 +181,13 @@ void LuxRevProcessor::rafraichirReglages()
     r.stereo  = stereo * 0.01f;
     r.tiltDb  = tiltDb;
     r.drive   = pDrive->load() * 0.01f;
-    r.seuilPorte = juce::Decibels::decibelsToGain (pSeuil->load());
 
     moteur.appliquer (r, &p);
 
     dernierProgramme = ip;
     dernierDecay = decay; dernierPredelai = pre; dernierColor = color;
     dernierStereo = stereo; dernierTilt = tiltDb;
-    dernierDrive = drive; dernierSeuil = seuil;
+    dernierDrive = drive;
 }
 
 //==============================================================================
@@ -257,9 +245,6 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float* wetL = tampon.getWritePointer (1);
     float* wetR = tampon.getWritePointer (2);
     moteur.traiter (mono, wetL, wetR, n);
-
-    niveauPorteDb.store (juce::Decibels::gainToDecibels (moteur.niveauDetecte, -100.0f));
-    gainPorte.store (moteur.gainPorteCourant());
 
     // A l'arret, on descend le humide a zero au lieu de couper net : un
     // interrupteur qui claque est un interrupteur rate, et l'hote peut

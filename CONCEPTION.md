@@ -235,9 +235,37 @@ entrée ─▶ [préampli LXP] ─▶ [pré-délai 0-200 ms] ─▶ [diffuseur :
 
 **`gate` et `inverse`** ne sont pas des réverbes courtes, ce sont des réverbes dont
 l'enveloppe est réécrite. Leur R² de décroissance (0,59 et 0,76) le prouve : la forme dans
-le temps ne suit pas une exponentielle. Implémentation : le tank tourne normalement, un
-étage d'enveloppe programmée est appliqué en sortie. Le profil exact est déjà dans le
-champ `enveloppe_db` de leur JSON — c'est une cible directe, à recopier.
+le temps ne suit pas une exponentielle.
+
+⚠️ **Et ce ne sont PAS des portes déclenchées.** Je les avais implémentées comme une
+enveloppe relancée à chaque attaque du signal, avec détection et seuil. C'est une erreur de
+nature, et deux manuels de l'époque le disent chacun de leur côté :
+
+> **AMS RMX16**, programme NONLIN 2 — « the sound decays only very slightly for a period of
+> time (set by the decay control), and then dies away very rapidly ». REVERSE 1 — « the
+> reverberating sound builds up for a period of time then suddenly stops ».
+
+> **Lexicon**, paramètre *Slope* de l'algorithme Gate — « Determines **how the amplitude
+> builds over time** (Size). Low Slope settings result in a higher amplitude at the
+> beginning; high Slope settings result in a higher amplitude at the end. »
+
+Aucun seuil, aucun déclencheur. La forme **est la réponse impulsionnelle du programme**, et
+la commande de durée en règle la **longueur** — pas une vitesse de décroissance. C'est un
+système linéaire et invariant : le même motif répond à chaque échantillon d'entrée, ce qui
+est exactement pourquoi la machine n'a rien à régler.
+
+**Implémentation retenue** : une ligne à retard alimentée par l'entrée **diffusée**, portant
+**192 prises** dont les gains suivent le profil relevé, à espacement pseudo-aléatoire. Le
+réseau bouclé n'intervient pas sur ces deux programmes — une queue exponentielle par-dessus
+émousserait justement la falaise qui fait le programme. La densité vient du nombre de prises
+et de la diffusion en amont, qui étale chaque prise en une bouffée.
+
+| écart de forme à la machine | porte déclenchée | banc non linéaire |
+|---|--:|--:|
+| Gate | 1,1 dB | **1,0 dB** |
+| Inverse | 2,5 dB | **1,4 dB** |
+
+Et surtout : **plus rien à régler**, comme sur la machine.
 
 **`delay1` et `delay2`** ne se mélangent jamais (densité finale 0,80 et 0,20). Les traiter
 comme des réverbes serait une erreur de nature. `delay2` montre des pics régulièrement

@@ -141,17 +141,6 @@ void ApparenceCellule::drawButtonText (juce::Graphics& g, juce::TextButton& b,
 //==============================================================================
 Ecran::Ecran (LuxRevProcessor& p, const Palette& pa) : proc (p), pal (pa) {}
 
-void Ecran::mouseDown (const juce::MouseEvent& e) { mouseDrag (e); }
-
-void Ecran::mouseDrag (const juce::MouseEvent& e)
-{
-    if (kProgrammes[iProg].enveloppePorte == nullptr || ! surSeuil) return;
-    if (! zoneCourbe.contains (e.position)) return;
-    const float u = juce::jlimit (0.0f, 1.0f,
-                       (zoneCourbe.getBottom() - e.position.y) / zoneCourbe.getHeight());
-    surSeuil (juce::jlimit (-60.0f, 0.0f, kPlancherDb + u * (0.0f - kPlancherDb)));
-}
-
 void Ecran::poserEtat (int programme, float d, float pre, float c,
                        float s, float t, float m)
 {
@@ -206,8 +195,7 @@ void Ecran::paint (juce::Graphics& g)
     // presque toute la largeur, ce qui lui donnait un poids qu'elle n'a pas : la
     // courbe de decroissance est l'information principale de cet ecran.
     auto bas = inner.removeFromBottom (44.0f);
-    zoneCourbe = inner.reduced (0.0f, 5.0f);
-    dessinerCourbe (g, zoneCourbe);
+    dessinerCourbe (g, inner.reduced (0.0f, 5.0f));
 
     g.setColour (pal.lueur.withAlpha (0.18f));
     g.drawLine (bas.getX(), bas.getY(), bas.getRight(), bas.getY(), 1.0f);
@@ -329,37 +317,6 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
                 juce::Rectangle<float> (z.getRight() - 32.0f, z.getY(), 32.0f, 11.0f),
                 juce::Justification::centredRight);
 
-    // ⚠️ SEUIL DE PORTE, visible et reglable — uniquement sur Gate et Inverse,
-    // les deux seuls programmes qui ont un etage d'enveloppe. La ligne se tire a
-    // la souris, et la barre a cote montre le niveau que le declencheur voit :
-    // on regle donc en regardant, pas en devinant.
-    if (kProgrammes[iProg].enveloppePorte != nullptr)
-    {
-        auto yDb = [z] (float v)
-        {
-            const float u = juce::jlimit (0.0f, 1.0f, (v - kPlancherDb) / (0.0f - kPlancherDb));
-            return z.getBottom() - u * z.getHeight();
-        };
-        const float ys = yDb (seuil);
-        g.setColour (juce::Colour (0xffe5a03c).withAlpha (0.85f));
-        const float tirets[] = { 5.0f, 4.0f };
-        g.drawDashedLine ({ z.getX(), ys, z.getRight(), ys }, tirets, 2, 1.4f);
-        g.setFont (juce::FontOptions (8.5f).withStyle ("bold"));
-        g.drawText ("SEUIL " + juce::String (seuil, 0) + " dB",
-                    juce::Rectangle<float> (z.getX() + 3.0f, ys - 12.0f, 110.0f, 11.0f),
-                    juce::Justification::centredLeft);
-
-        // niveau vu par le declencheur, et temoin d'ouverture
-        const float yn = yDb (niveauPorte);
-        g.setColour (pal.lueur.withAlpha (0.55f));
-        g.fillRect (juce::Rectangle<float> (z.getRight() - 10.0f, yn,
-                                            6.0f, z.getBottom() - yn));
-        if (gainPorte > 0.05f)
-        {
-            g.setColour (juce::Colour (0xffe5a03c));
-            g.fillEllipse (z.getRight() - 12.0f, z.getY() + 2.0f, 8.0f, 8.0f);
-        }
-    }
 }
 
 void Ecran::dessinerSpectre (juce::Graphics& g, juce::Rectangle<float> z)
@@ -452,11 +409,6 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
 {
     setLookAndFeel (&apparence);
     addAndMakeVisible (ecran);
-    ecran.surSeuil = [this] (float db)
-    {
-        if (auto* p2 = proc.etat.getParameter ("seuil"))
-            p2->setValueNotifyingHost (p2->convertTo0to1 (db));
-    };
 
     auto* choix = dynamic_cast<juce::AudioParameterChoice*> (proc.etat.getParameter ("programme"));
     for (int i = 0; i < kNombreProgrammes; ++i)
@@ -571,8 +523,6 @@ void LuxRevEditor::timerCallback()
     sPredelai.setDoubleClickReturnValue (true, kProgrammes[ip].predelaiUsineMs);
 
     ecran.poserAllume (actif);
-    ecran.poserPorte (proc.etat.getRawParameterValue ("seuil")->load(),
-                      proc.niveauPorteDb.load(), proc.gainPorte.load());
     ecran.poserEtat (ip, decay, pre, color, ster, tilt, mix);
     ecran.poserNiveau (actif ? proc.niveauEntreeDb.load() : -100.0f);
     repaint (zoneInterrupteur);
