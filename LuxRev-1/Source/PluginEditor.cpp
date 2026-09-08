@@ -141,6 +141,17 @@ void ApparenceCellule::drawButtonText (juce::Graphics& g, juce::TextButton& b,
 //==============================================================================
 Ecran::Ecran (LuxRevProcessor& p, const Palette& pa) : proc (p), pal (pa) {}
 
+void Ecran::mouseDown (const juce::MouseEvent& e) { mouseDrag (e); }
+
+void Ecran::mouseDrag (const juce::MouseEvent& e)
+{
+    if (kProgrammes[iProg].enveloppePorte == nullptr || ! surSeuil) return;
+    if (! zoneCourbe.contains (e.position)) return;
+    const float u = juce::jlimit (0.0f, 1.0f,
+                       (zoneCourbe.getBottom() - e.position.y) / zoneCourbe.getHeight());
+    surSeuil (juce::jlimit (-60.0f, 0.0f, kPlancherDb + u * (0.0f - kPlancherDb)));
+}
+
 void Ecran::poserEtat (int programme, float d, float pre, float c,
                        float s, float t, float m)
 {
@@ -195,7 +206,8 @@ void Ecran::paint (juce::Graphics& g)
     // presque toute la largeur, ce qui lui donnait un poids qu'elle n'a pas : la
     // courbe de decroissance est l'information principale de cet ecran.
     auto bas = inner.removeFromBottom (44.0f);
-    dessinerCourbe (g, inner.reduced (0.0f, 5.0f));
+    zoneCourbe = inner.reduced (0.0f, 5.0f);
+    dessinerCourbe (g, zoneCourbe);
 
     g.setColour (pal.lueur.withAlpha (0.18f));
     g.drawLine (bas.getX(), bas.getY(), bas.getRight(), bas.getY(), 1.0f);
@@ -316,6 +328,38 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
     g.drawText (juce::String (T, T < 1.0f ? 2 : 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") + " S",
                 juce::Rectangle<float> (z.getRight() - 32.0f, z.getY(), 32.0f, 11.0f),
                 juce::Justification::centredRight);
+
+    // ⚠️ SEUIL DE PORTE, visible et reglable — uniquement sur Gate et Inverse,
+    // les deux seuls programmes qui ont un etage d'enveloppe. La ligne se tire a
+    // la souris, et la barre a cote montre le niveau que le declencheur voit :
+    // on regle donc en regardant, pas en devinant.
+    if (kProgrammes[iProg].enveloppePorte != nullptr)
+    {
+        auto yDb = [z] (float v)
+        {
+            const float u = juce::jlimit (0.0f, 1.0f, (v - kPlancherDb) / (0.0f - kPlancherDb));
+            return z.getBottom() - u * z.getHeight();
+        };
+        const float ys = yDb (seuil);
+        g.setColour (juce::Colour (0xffe5a03c).withAlpha (0.85f));
+        const float tirets[] = { 5.0f, 4.0f };
+        g.drawDashedLine ({ z.getX(), ys, z.getRight(), ys }, tirets, 2, 1.4f);
+        g.setFont (juce::FontOptions (8.5f).withStyle ("bold"));
+        g.drawText ("SEUIL " + juce::String (seuil, 0) + " dB",
+                    juce::Rectangle<float> (z.getX() + 3.0f, ys - 12.0f, 110.0f, 11.0f),
+                    juce::Justification::centredLeft);
+
+        // niveau vu par le declencheur, et temoin d'ouverture
+        const float yn = yDb (niveauPorte);
+        g.setColour (pal.lueur.withAlpha (0.55f));
+        g.fillRect (juce::Rectangle<float> (z.getRight() - 10.0f, yn,
+                                            6.0f, z.getBottom() - yn));
+        if (gainPorte > 0.05f)
+        {
+            g.setColour (juce::Colour (0xffe5a03c));
+            g.fillEllipse (z.getRight() - 12.0f, z.getY() + 2.0f, 8.0f, 8.0f);
+        }
+    }
 }
 
 void Ecran::dessinerSpectre (juce::Graphics& g, juce::Rectangle<float> z)
@@ -408,6 +452,11 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
 {
     setLookAndFeel (&apparence);
     addAndMakeVisible (ecran);
+    ecran.surSeuil = [this] (float db)
+    {
+        if (auto* p2 = proc.etat.getParameter ("seuil"))
+            p2->setValueNotifyingHost (p2->convertTo0to1 (db));
+    };
 
     auto* choix = dynamic_cast<juce::AudioParameterChoice*> (proc.etat.getParameter ("programme"));
     for (int i = 0; i < kNombreProgrammes; ++i)
@@ -437,7 +486,7 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
     // ⚠️ ENTREE est place AVANT Decay parce qu'il est avant dans la chaine :
     // il precede l'etage d'entree, donc c'est lui qui decide ou l'on se situe
     // dans la plage du manuel et ce que le bandeau de headroom affiche.
-    construireBouton (sEntree,   lEntree,   "ENTREE",    "entree",    0.5f);
+    construireBouton (sEntree,   lEntree,   "DRIVE",     "drive",    -1.0f);
     construireBouton (sDecay,    lDecay,    "DECAY",     "decay",    -1.0f);
     construireBouton (sPredelai, lPredelai, "PRE-DELAY", "predelai", -1.0f);
     construireBouton (sColor,    lColor,    "COLOR",     "color",     0.5f);
@@ -477,7 +526,7 @@ void LuxRevEditor::construireBouton (juce::Slider& s, juce::Label& l,
     l.setFont (juce::FontOptions (9.5f).withStyle ("bold"));
     addAndMakeVisible (l);
 
-    auto& a = (id == "entree")   ? aEntree
+    auto& a = (id == "drive")    ? aEntree
             : (id == "decay")    ? aDecay
             : (id == "predelai") ? aPredelai
             : (id == "color")    ? aColor
@@ -522,6 +571,8 @@ void LuxRevEditor::timerCallback()
     sPredelai.setDoubleClickReturnValue (true, kProgrammes[ip].predelaiUsineMs);
 
     ecran.poserAllume (actif);
+    ecran.poserPorte (proc.etat.getRawParameterValue ("seuil")->load(),
+                      proc.niveauPorteDb.load(), proc.gainPorte.load());
     ecran.poserEtat (ip, decay, pre, color, ster, tilt, mix);
     ecran.poserNiveau (actif ? proc.niveauEntreeDb.load() : -100.0f);
     repaint (zoneInterrupteur);
@@ -530,8 +581,8 @@ void LuxRevEditor::timerCallback()
     // autorise des boutons nus et des etiquettes courtes.
     juce::String txt = "DECAY";
     juce::String val = juce::String (decay, 2) + " s";
-    if      (sEntree.isMouseOverOrDragging())   { txt = "ENTREE";    const float e = proc.etat.getRawParameterValue ("entree")->load();
-                                                 val = (e > 0 ? "+" : "") + juce::String (e, 1) + " dB"; }
+    if      (sEntree.isMouseOverOrDragging())   { txt = "DRIVE";
+                                                 val = juce::String ((int) proc.etat.getRawParameterValue ("drive")->load()) + " %"; }
     else if (sPredelai.isMouseOverOrDragging()) { txt = "PRE-DELAY"; val = juce::String ((int) pre) + " ms"; }
     else if (sColor.isMouseOverOrDragging())    { txt = "COLOR";     val = juce::String ((int) color) + " %"; }
     else if (sStereo.isMouseOverOrDragging())   { txt = "STEREO";    val = juce::String ((int) ster) + " %"; }

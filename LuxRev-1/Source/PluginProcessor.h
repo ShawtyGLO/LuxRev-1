@@ -54,6 +54,10 @@ public:
         Ecrit par le fil audio, lu par l'editeur — d'ou l'atomique. */
     std::atomic<float> niveauEntreeDb { -100.0f };
 
+    /** Niveau vu par le declencheur de porte, et ouverture de celle-ci. */
+    std::atomic<float> niveauPorteDb { -100.0f };
+    std::atomic<float> gainPorte { 0.0f };
+
     static juce::StringArray nomsProgrammes();
 
     /** Un preset d'usine : un programme LXP-1 et les six commandes. */
@@ -78,6 +82,7 @@ private:
     int   dernierProgramme = -1;
     float dernierDecay = -1.0f, dernierPredelai = -1.0f, dernierColor = -1.0f;
     float dernierStereo = -1.0f, dernierTilt = -1000.0f;
+    float dernierDrive = -1.0f, dernierSeuil = -1000.0f;
 
     std::atomic<float>* pActif     = nullptr;
     std::atomic<float>* pProgramme = nullptr;
@@ -87,7 +92,8 @@ private:
     std::atomic<float>* pStereo    = nullptr;
     std::atomic<float>* pTilt      = nullptr;
     std::atomic<float>* pMix       = nullptr;
-    std::atomic<float>* pEntree    = nullptr;
+    std::atomic<float>* pDrive     = nullptr;
+    std::atomic<float>* pSeuil     = nullptr;
 
     int presetCourant = 0;
 

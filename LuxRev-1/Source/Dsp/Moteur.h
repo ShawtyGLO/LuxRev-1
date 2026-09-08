@@ -78,7 +78,8 @@ struct Reglages
     float tiltDb        = 0.0f;
     float tiltPivotHz   = 700.0f;
     float stereo        = 1.0f;
-    float preampliDb    = 0.0f;      // pot d'entree R52
+    float drive         = 0.0f;      // 0 = l'etage du manuel, 1 = +18 dB dedans
+    float seuilPorte    = 0.03f;     // amplitude de declenchement de Gate/Inverse
     bool  preampliActif = true;
 };
 
@@ -401,7 +402,10 @@ public:
         murL.poser (tmp, n);
         murR.poser (tmp, n);
 
-        preampli.poserGain (reg.preampliDb);
+        gainInterne = (programme != nullptr && programme->gainInterne > 0.0f)
+                        ? programme->gainInterne : 1.0f;
+
+        preampli.poserDrive (reg.drive);
         preampli.activer (reg.preampliActif);
 
         if (programme != nullptr && nouveauProgramme)
@@ -478,8 +482,17 @@ public:
             if (contournerTank) { g = d = q; }
             else                { tank (q, g, d); }
 
-            anneauL[(size_t) (ecritsInterne & kMasque)] = quantifier ((float) g, reg.bits, bruit);
-            anneauR[(size_t) (ecritsInterne & kMasque)] = quantifier ((float) d, reg.bits, bruit);
+            // ⚠️ Le signal est monte AVANT le convertisseur et redescendu juste
+            // apres. Il n'est pas modifie — seule sa POSITION dans la grille
+            // 16 bits change. Sans ce calage, le tank sort a des niveaux qui
+            // varient de 14 dB d'un programme a l'autre, donc le grain de
+            // quantification s'entend d'autant plus fort que le programme est
+            // discret : mesure avant correction, de 71 a 95 dB de plage dynamique
+            // pour 85 dB annonces au manuel.
+            anneauL[(size_t) (ecritsInterne & kMasque)] =
+                quantifier ((float) (g * gainInterne), reg.bits, bruit) / gainInterne;
+            anneauR[(size_t) (ecritsInterne & kMasque)] =
+                quantifier ((float) (d * gainInterne), reg.bits, bruit) / gainInterne;
             ++ecritsInterne;                                        // DAC
         }
 
@@ -747,6 +760,7 @@ private:
     */
     inline void detecter (float x) noexcept
     {
+        niveauDetecte = rapide;
         if (porte == nullptr) return;
         const float a = std::abs (x);
         rapide += (a > rapide ? kAttaqueRapide : kRelacheRapide) * (a - rapide);
@@ -763,7 +777,7 @@ private:
             if (rapide < pic * kReArmement) arme = true;
             return;
         }
-        if (rapide > kSeuilPlancher && rapide > lent * kFacteurAttaque)
+        if (rapide > reg.seuilPorte && rapide > lent * kFacteurAttaque)
         {
             posPorte = 0.0;
             arme = false;
@@ -787,7 +801,7 @@ private:
     static constexpr float kAttaqueLente   = 0.004f;
     static constexpr float kRelacheLente   = 0.0008f;
     static constexpr float kFacteurAttaque = 2.5f;
-    static constexpr float kSeuilPlancher  = 3.0e-4f;
+
     static constexpr float kReArmement     = 0.45f;  // retomber a -7 dB du pic
     // ⚠️ Tres court : 0,17 ms. Il ne sert qu'a effacer la MARCHE au
     // declenchement, quand le gain passe de zero a la premiere valeur du profil.
@@ -795,11 +809,17 @@ private:
     // faisait passer l'ecart de forme d'`inverse` de 1,7 a 5,4 dB.
     static constexpr float kLissePorte     = 0.12f;
 
+    float gainInterne = 1.0f;
     Preampli preampli;
     const float* porte = nullptr;
     int nPorte = 0;
     double posPorte = 0.0, pasPorte = 0.0;
     float rapide = 0.0f, lent = 0.0f, pic = 0.0f, gainPorte = 0.0f;
+public:
+    /** Niveau vu par le declencheur, et etat de la porte — pour l'ecran. */
+    float niveauDetecte = 0.0f;
+    float gainPorteCourant() const noexcept { return gainPorte; }
+private:
     bool arme = true;
 
     Bruit bruit { 20260907u };

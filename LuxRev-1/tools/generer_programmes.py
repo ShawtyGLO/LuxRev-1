@@ -22,6 +22,7 @@ ACCORD = RACINE / "_proto" / "accord" / "programmes.json"
 MESURES = RACINE / "_proto" / "mesures"
 VOICING = RACINE / "_proto" / "accord" / "voicing_portage.json"
 ENV_PORTAGE = RACINE / "_proto" / "accord" / "enveloppe_portage.json"
+NIVEAU = RACINE / "_proto" / "accord" / "niveau_interne.json"
 SORTIE = ICI.parent / "Source" / "Generated" / "Programmes.h"
 
 # Ordre d'affichage a la facade. Les cles sont celles de l'accordeur.
@@ -170,6 +171,13 @@ def main():
     # Decision (2026-09-08) : la reference est LA MACHINE, pas le prototype. Les
     # deux moteurs visent donc la meme cible mesuree avec chacun son voicing,
     # plutot que d'etre rendus identiques entre eux.
+    # ⚠️ Calage du niveau devant le convertisseur. Le tank sort a des niveaux qui
+    # varient de 14 dB d'un programme a l'autre : sans ce calage, chacun occupe une
+    # portion differente de la grille 16 bits et le grain de quantification
+    # s'entend d'autant plus fort que le programme est discret. Mesure avant
+    # correction : de 71 a 95 dB de plage, pour 85 dB au manuel.
+    niveaux = json.loads(NIVEAU.read_text(encoding="utf-8")) if NIVEAU.exists() else {}
+
     voicing = {}
     if VOICING.exists():
         voicing = json.loads(VOICING.read_text(encoding="utf-8"))
@@ -237,6 +245,7 @@ def main():
     # certaines dispositions et donne des pointeurs decales.
     t.append("    const float* enveloppePorte;     // profil de Gate/Inverse, nullptr sinon")
     t.append("    int nEnveloppePorte;             // nombre de points, pas de kPasEnveloppeMs")
+    t.append("    float gainInterne;               // calage devant le convertisseur 16 bits")
     t.append("};")
     t.append("")
 
@@ -274,10 +283,11 @@ def main():
         m = mesures[nom]
         t.append(f"      kFir{i}, kCompColor{i}, kCompLp{i}, kEnv{i}, kSpectre{i},")
         t.append(f"      {litteral(m['t60'])}, {litteral(m['mel'])},")
+        gi = niveaux.get(cle, 1.0)
         if m["porte"]:
-            t.append(f"      kPorte{i}, {len(m['porte'])} }},")
+            t.append(f"      kPorte{i}, {len(m['porte'])}, {litteral(gi)} }},")
         else:
-            t.append("      nullptr, 0 },")
+            t.append(f"      nullptr, 0, {litteral(gi)} }},")
     t.append("};")
     t.append("")
     t.append("} // namespace luxrev")

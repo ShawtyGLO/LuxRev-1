@@ -57,13 +57,33 @@ inline constexpr double kAmpPleineEchelle = 7.9482229; // 10^(15/20) * sqrt(2)
 class Preampli
 {
 public:
-    /** `gainDb` est le pot d'entree R52. Il n'y a pas de reglage de « drive »
-        separe sur la machine : le seul moyen d'entrer dans l'ecretage est de
-        monter le niveau, comme sur l'appareil. */
-    void poserGain (double gainDb) noexcept
+    /** DRIVE, de 0 a 1.
+
+        ⚠️ Ce n'est plus un gain d'entree, et c'est une decision de produit, pas
+        une correction. Un gain d'entree ne sert plus a rien depuis que le fondu
+        sec/humide est a puissance constante : il ne fait que deplacer le niveau.
+        Un drive, lui, POUSSE dans l'etage puis defait le gain juste apres — le
+        niveau ne bouge pas, seule la quantite d'harmoniques change.
+
+        ⚠️ Et il faut le dire : au-dela de quelques pour cent, ce n'est plus le
+        LXP-1. Le manuel donne moins de 0,07 % de THD sur TOUTE la plage
+        d'entree. A drive nul on est exactement sur cette valeur ; au-dela, on
+        est dans une commande de couleur, au meme titre que COLOR ou TILT.
+    */
+    void poserDrive (double drive) noexcept
     {
-        gain = std::pow (10.0, gainDb / 20.0);
+        // +18 dB au maximum : la THD croit comme le carre du niveau, donc de
+        // 0,07 % a environ 4,5 %. Au-dela l'etage devient une distorsion, pas
+        // une couleur.
+        drive = std::clamp (drive, 0.0, 1.0);
+        gain = std::pow (10.0, drive * 18.0 / 20.0);
+        compensation = 1.0 / gain;
     }
+
+    /** Le niveau reellement presente a l'etage, en multiple de la pleine echelle.
+        C'est lui que le bandeau de headroom doit afficher : sans le drive, le
+        temoin de plafond ne s'allumerait jamais. */
+    double facteurNiveau() const noexcept { return gain; }
 
     void activer (bool oui) noexcept { actif = oui; }
     bool estActif() const noexcept { return actif; }
@@ -75,11 +95,12 @@ public:
         // contre-reaction : lineaire au centre, compression progressive, jamais
         // de coin franc.
         const double v = (double) x * gain * kAmpPleineEchelle;
-        return (float) (std::tanh (kEcretageK * v) / (kEcretageK * kAmpPleineEchelle));
+        return (float) (std::tanh (kEcretageK * v)
+                          / (kEcretageK * kAmpPleineEchelle) * compensation);
     }
 
 private:
-    double gain = 1.0;
+    double gain = 1.0, compensation = 1.0;
     bool actif = true;
 };
 

@@ -72,9 +72,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout LuxRevProcessor::construireP
     // bandeau de headroom affiche. Sans lui, le quatrieme temoin ne s'allume
     // qu'au-dessus de 0 dBFS, ce qui n'arrive presque jamais : le bandeau ne
     // servait a rien.
+    // ⚠️ DRIVE, pas gain. Un gain d'entree ne servait plus a rien depuis que le
+    // fondu sec/humide est a puissance constante : il ne faisait que deplacer le
+    // niveau. Le drive pousse dans l'etage d'entree et defait le gain juste
+    // apres — seule la quantite d'harmoniques change.
+    //
+    // ⚠️ A zero on est exactement sur l'etage du manuel (0,07 % de THD). Au-dela,
+    // on quitte le LXP-1 : c'est une commande de couleur, comme COLOR ou TILT.
     l.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { "entree", 1 }, "Entree",
-        NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f,
+        ParameterID { "drive", 1 }, "Drive",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
+        AudioParameterFloatAttributes().withLabel ("%")));
+
+    // Seuil de declenchement de Gate et Inverse. ⚠️ C'est la SEULE commande du
+    // plugin qui ne vient d'aucune mesure : la machine n'a pas de declencheur,
+    // son enveloppe part de l'impulsion. Elle est donc exposee plutot que devinee.
+    l.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { "seuil", 1 }, "Seuil de porte",
+        NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -30.0f,
         AudioParameterFloatAttributes().withLabel ("dB")));
 
     return l;
@@ -95,7 +110,8 @@ LuxRevProcessor::LuxRevProcessor()
     pStereo    = etat.getRawParameterValue ("stereo");
     pTilt      = etat.getRawParameterValue ("tilt");
     pMix       = etat.getRawParameterValue ("mix");
-    pEntree    = etat.getRawParameterValue ("entree");
+    pDrive     = etat.getRawParameterValue ("drive");
+    pSeuil     = etat.getRawParameterValue ("seuil");
 }
 
 bool LuxRevProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -151,7 +167,12 @@ void LuxRevProcessor::rafraichirReglages()
     const float  stereo= pStereo->load();
     const float  tiltDb= pTilt->load();
 
+    const float drive = pDrive->load();
+    const float seuil = pSeuil->load();
+
     if (ip == dernierProgramme
+        && juce::approximatelyEqual (drive,  dernierDrive)
+        && juce::approximatelyEqual (seuil,  dernierSeuil)
         && juce::approximatelyEqual (decay,  dernierDecay)
         && juce::approximatelyEqual (pre,    dernierPredelai)
         && juce::approximatelyEqual (color,  dernierColor)
@@ -170,12 +191,15 @@ void LuxRevProcessor::rafraichirReglages()
     r = macroColor (r, color * 0.01f, p);
     r.stereo  = stereo * 0.01f;
     r.tiltDb  = tiltDb;
+    r.drive   = pDrive->load() * 0.01f;
+    r.seuilPorte = juce::Decibels::decibelsToGain (pSeuil->load());
 
     moteur.appliquer (r, &p);
 
     dernierProgramme = ip;
     dernierDecay = decay; dernierPredelai = pre; dernierColor = color;
     dernierStereo = stereo; dernierTilt = tiltDb;
+    dernierDrive = drive; dernierSeuil = seuil;
 }
 
 //==============================================================================
@@ -199,19 +223,16 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     // --- entree mono : la machine n'a qu'une entree, c'est un 1/4" asymetrique
     // 50 kOhm (manuel de service). Sommer avant le tank est donc fidele, pas une
     // simplification.
-    const float gEntree = juce::Decibels::decibelsToGain (pEntree->load());
-
     float* mono = tampon.getWritePointer (0);
     if (nEntrees >= 2)
     {
         const float* g = buffer.getReadPointer (0);
         const float* d = buffer.getReadPointer (1);
-        for (int i = 0; i < n; ++i) mono[i] = 0.5f * (g[i] + d[i]) * gEntree;
+        for (int i = 0; i < n; ++i) mono[i] = 0.5f * (g[i] + d[i]);
     }
     else if (nEntrees == 1)
     {
         juce::FloatVectorOperations::copy (mono, buffer.getReadPointer (0), n);
-        juce::FloatVectorOperations::multiply (mono, gEntree, n);
     }
     else
     {
@@ -224,7 +245,10 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const float crete = juce::FloatVectorOperations::findMaximum (mono, n);
         const float creux = juce::FloatVectorOperations::findMinimum (mono, n);
         const float amp = juce::jmax (std::abs (crete), std::abs (creux));
-        const float db = juce::Decibels::gainToDecibels (amp, -100.0f);
+        // ⚠️ Le bandeau affiche le niveau PRESENTE A L'ETAGE D'ENTREE, drive
+        // compris. Sans lui, le temoin de plafond ne s'allumerait jamais.
+        const float db = juce::Decibels::gainToDecibels (
+                             amp * juce::Decibels::decibelsToGain (pDrive->load() * 0.18f), -100.0f);
         const float ancien = niveauEntreeDb.load();
         // descente lente, montee immediate : un vu-metre se lit mieux ainsi
         niveauEntreeDb.store (db > ancien ? db : ancien + (db - ancien) * 0.25f);
@@ -233,6 +257,9 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float* wetL = tampon.getWritePointer (1);
     float* wetR = tampon.getWritePointer (2);
     moteur.traiter (mono, wetL, wetR, n);
+
+    niveauPorteDb.store (juce::Decibels::gainToDecibels (moteur.niveauDetecte, -100.0f));
+    gainPorte.store (moteur.gainPorteCourant());
 
     // A l'arret, on descend le humide a zero au lieu de couper net : un
     // interrupteur qui claque est un interrupteur rate, et l'hote peut
