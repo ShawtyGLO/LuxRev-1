@@ -4,7 +4,11 @@ using namespace luxrev;
 
 namespace
 {
-    constexpr int   kLargeur = 700, kHauteur = 470;
+    // ⚠️ Le format vient de la maquette 03-remote : PLUS HAUT que large. C'est
+    // tout l'argument du format « remote » — le MRC de Lexicon ne ressemble pas a
+    // une face avant de rack. Une premiere version a 700 x 470 ecrasait la facade
+    // et coupait la ligne de lecture du bas.
+    constexpr int   kLargeur = 700, kHauteur = 596;
     constexpr float kPlancherDb = -60.0f;
 
     /** Fenetres d'affichage, en secondes. La courbe doit tenir ENTIERE : a
@@ -14,6 +18,19 @@ namespace
     // Points de trace de la courbe. Au niveau du fichier, pas dans la fonction :
     // MSVC refuse qu'une lambda sans capture par defaut lise un constexpr local.
     constexpr int kPointsCourbe = 220;
+
+    /** Course des boutons.
+
+        ⚠️ Convention JUCE, et c'est la qu'une premiere version s'est trompee :
+        les deux angles se comptent DANS LE SENS DES AIGUILLES depuis midi, et
+        l'angle de fin doit etre le PLUS GRAND. Un depart a 0,78 pi et une fin a
+        1,22 pi ne donnent donc pas une course de +/-140 degres autour de midi :
+        ils donnent 80 degres autour du BAS, ce qui met le repere a l'envers et
+        rend la commande presque immobile. Une course classique part en bas a
+        gauche (220 degres) et arrive en bas a droite (500 = 140 + un tour).
+    */
+    constexpr float kAngleDebut = juce::MathConstants<float>::pi * 1.22f;
+    constexpr float kAngleFin   = juce::MathConstants<float>::pi * 2.78f;
 
     float fenetreS (float decay, float predelaiMs)
     {
@@ -30,17 +47,17 @@ void ApparenceBouton::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
 {
     const auto zone = juce::Rectangle<int> (x, y, w, h).toFloat();
     const float d = juce::jmin (zone.getWidth(), zone.getHeight());
-    const auto cercle = zone.withSizeKeepingCentre (d, d).reduced (d * 0.16f);
+    const auto cercle = zone.withSizeKeepingCentre (d, d).reduced (d * 0.17f);
     const auto centre = cercle.getCentre();
     const float rayon = cercle.getWidth() * 0.5f;
     const float angle = debutAngle + pos * (finAngle - debutAngle);
 
     // --- la piste, et son cran de repos
-    const float rp = rayon + d * 0.11f;
+    const float rp = rayon + d * 0.10f;
     juce::Path piste;
     piste.addCentredArc (centre.x, centre.y, rp, rp, 0.0f, debutAngle, finAngle, true);
-    g.setColour (juce::Colour (0xff000000).withAlpha (0.6f));
-    g.strokePath (piste, juce::PathStrokeType (d * 0.045f, juce::PathStrokeType::curved,
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.strokePath (piste, juce::PathStrokeType (d * 0.05f, juce::PathStrokeType::curved,
                                                juce::PathStrokeType::rounded));
 
     float tc = 0.0f;
@@ -54,24 +71,24 @@ void ApparenceBouton::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     // d'autres.
     const float a0 = debutAngle + juce::jmin (pos, tc) * (finAngle - debutAngle);
     const float a1 = debutAngle + juce::jmax (pos, tc) * (finAngle - debutAngle);
-    if (std::abs (a1 - a0) > 0.001f)
+    if (std::abs (a1 - a0) > 0.002f)
     {
         juce::Path arc;
         arc.addCentredArc (centre.x, centre.y, rp, rp, 0.0f, a0, a1, true);
         g.setColour (pal.bande2);
-        g.strokePath (arc, juce::PathStrokeType (d * 0.062f, juce::PathStrokeType::curved,
+        g.strokePath (arc, juce::PathStrokeType (d * 0.07f, juce::PathStrokeType::curved,
                                                  juce::PathStrokeType::rounded));
     }
     if (aUnCentre)
     {
         // Sans ce cran, un arc de longueur nulle au centre se lit comme une
         // commande morte plutot qu'au repos.
-        const float ac = debutAngle + tc * (finAngle - debutAngle) - juce::MathConstants<float>::halfPi;
-        const juce::Point<float> p0 (centre.x + std::cos (ac) * (rp - d * 0.045f),
-                                     centre.y + std::sin (ac) * (rp - d * 0.045f));
-        const juce::Point<float> p1 (centre.x + std::cos (ac) * (rp + d * 0.05f),
-                                     centre.y + std::sin (ac) * (rp + d * 0.05f));
-        g.setColour (pal.serigraphie2.withAlpha (0.75f));
+        const float ac = debutAngle + tc * (finAngle - debutAngle);
+        const juce::Point<float> p0 (centre.x + std::sin (ac) * (rp - d * 0.05f),
+                                     centre.y - std::cos (ac) * (rp - d * 0.05f));
+        const juce::Point<float> p1 (centre.x + std::sin (ac) * (rp + d * 0.055f),
+                                     centre.y - std::cos (ac) * (rp + d * 0.055f));
+        g.setColour (pal.serigraphie2.withAlpha (0.8f));
         g.drawLine ({ p0, p1 }, d * 0.035f);
     }
 
@@ -79,19 +96,46 @@ void ApparenceBouton::drawRotarySlider (juce::Graphics& g, int x, int y, int w, 
     g.setGradientFill (juce::ColourGradient (pal.boutonA, centre.x, cercle.getY(),
                                              pal.boutonB, centre.x, cercle.getBottom(), false));
     g.fillEllipse (cercle);
-    g.setColour (juce::Colour (0xff000000).withAlpha (0.5f));
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
     g.drawEllipse (cercle, 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.14f));
-    g.drawEllipse (cercle.reduced (0.8f).withTrimmedBottom (cercle.getHeight() * 0.5f), 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.drawEllipse (cercle.reduced (1.0f), 1.0f);
 
     // --- le repere, unique ornement : la signature Lexicon
-    const float ar = angle - juce::MathConstants<float>::halfPi;
-    const juce::Point<float> r0 (centre.x + std::cos (ar) * rayon * 0.30f,
-                                 centre.y + std::sin (ar) * rayon * 0.30f);
-    const juce::Point<float> r1 (centre.x + std::cos (ar) * rayon * 0.90f,
-                                 centre.y + std::sin (ar) * rayon * 0.90f);
-    g.setColour (pal.repere.withAlpha (0.92f));
-    g.drawLine ({ r0, r1 }, juce::jmax (1.6f, d * 0.045f));
+    // Un point a l'angle t est en (sin t, -cos t) : midi vers le haut, sens des
+    // aiguilles quand t croit.
+    const juce::Point<float> r0 (centre.x + std::sin (angle) * rayon * 0.40f,
+                                 centre.y - std::cos (angle) * rayon * 0.40f);
+    const juce::Point<float> r1 (centre.x + std::sin (angle) * rayon * 0.92f,
+                                 centre.y - std::cos (angle) * rayon * 0.92f);
+    g.setColour (pal.repere.withAlpha (0.95f));
+    g.drawLine ({ r0, r1 }, juce::jmax (2.0f, d * 0.055f));
+}
+
+//==============================================================================
+void ApparenceCellule::drawButtonBackground (juce::Graphics& g, juce::Button& b,
+                                             const juce::Colour&, bool survol, bool)
+{
+    const auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+    const bool choisi = b.getToggleState();
+
+    g.setColour (pal.lueur.withAlpha (choisi ? 0.22f : (survol ? 0.16f : 0.10f)));
+    g.fillRoundedRectangle (r, 2.0f);
+    if (choisi)
+    {
+        g.setColour (pal.lueur.withAlpha (0.5f));
+        g.drawRoundedRectangle (r, 2.0f, 1.0f);
+    }
+}
+
+void ApparenceCellule::drawButtonText (juce::Graphics& g, juce::TextButton& b,
+                                       bool survol, bool)
+{
+    const bool choisi = b.getToggleState();
+    g.setColour (choisi ? pal.lueur : (survol ? pal.lueur.withAlpha (0.85f) : pal.lueurFaible));
+    g.setFont (juce::FontOptions (10.5f).withStyle (choisi ? "bold" : "plain"));
+    g.drawText (b.getButtonText(), b.getLocalBounds().reduced (8, 0),
+                juce::Justification::centredLeft, false);
 }
 
 //==============================================================================
@@ -115,35 +159,47 @@ void Ecran::paint (juce::Graphics& g)
     g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.drawRoundedRectangle (zone.reduced (0.5f), 4.0f, 1.0f);
 
-    auto inner = zone.reduced (11.0f, 10.0f);
+    // A l'arret, seuls la diode et l'ecran se grisent : le panneau reste, comme
+    // une machine eteinte dont la face avant est toujours la.
+    if (! allume)
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (zone, 4.0f);
+        g.setColour (pal.serigraphie2.withAlpha (0.5f));
+        g.setFont (juce::FontOptions (13.0f).withStyle ("bold"));
+        g.drawText ("ARRET", zone, juce::Justification::centred);
+        return;
+    }
 
-    // colonne de gauche : le bandeau de headroom, titre colle au bandeau
+    auto inner = zone.reduced (12.0f, 11.0f);
+
     auto colonne = inner.removeFromLeft (34.0f);
     dessinerHeadroom (g, colonne);
     inner.removeFromLeft (10.0f);
 
-    // en-tete : rang et nom du programme
     auto haut = inner.removeFromTop (22.0f);
     g.setColour (pal.lueurFaible);
-    g.setFont (juce::FontOptions (9.0f).withStyle ("bold"));
+    g.setFont (juce::FontOptions (9.5f).withStyle ("bold"));
     g.drawText ("PROGRAM " + juce::String (iProg + 1).paddedLeft ('0', 2),
                 haut, juce::Justification::centredLeft);
     g.setColour (pal.lueur);
-    g.setFont (juce::FontOptions (18.0f).withStyle ("bold"));
+    g.setFont (juce::FontOptions (19.0f).withStyle ("bold"));
     g.drawText (juce::String (kProgrammes[iProg].nom).toUpperCase(),
                 haut, juce::Justification::centredRight);
 
-    auto bas = inner.removeFromBottom (54.0f);
-    dessinerCourbe (g, inner.reduced (0.0f, 4.0f));
+    // ⚠️ La reponse en frequences est reduite a une bande etroite. Elle occupait
+    // presque toute la largeur, ce qui lui donnait un poids qu'elle n'a pas : la
+    // courbe de decroissance est l'information principale de cet ecran.
+    auto bas = inner.removeFromBottom (48.0f);
+    dessinerCourbe (g, inner.reduced (0.0f, 5.0f));
 
     g.setColour (pal.lueur.withAlpha (0.18f));
     g.drawLine (bas.getX(), bas.getY(), bas.getRight(), bas.getY(), 1.0f);
     bas.removeFromTop (5.0f);
 
-    auto zCercles = bas.removeFromLeft (86.0f);
-    dessinerCercles (g, zCercles);
-    bas.removeFromLeft (12.0f);
-    dessinerSpectre (g, bas);
+    dessinerCercles (g, bas.removeFromLeft (84.0f));
+    bas.removeFromLeft (14.0f);
+    dessinerSpectre (g, bas.removeFromLeft (juce::jmin (190.0f, bas.getWidth())));
 }
 
 void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
@@ -152,8 +208,6 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
     const float T = fenetreS (decay, predelaiMs);
     const float pasMs = kDureeEnveloppeS * 1000.0f / (kTailleEnveloppe - 1);
 
-    // instant du pic mesure : la dilatation du temps ne s'applique qu'apres lui,
-    // sinon on etirerait aussi l'attaque
     int iPic = 0;
     for (int i = 1; i < kTailleEnveloppe; ++i)
         if (p.enveloppeDb[i] > p.enveloppeDb[iPic]) iPic = i;
@@ -162,7 +216,6 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
     const float r = juce::jmax (0.05f, decay / juce::jmax (p.t60MesureS, 0.01f));
     const float gainMix = juce::Decibels::gainToDecibels (juce::jmax (mix * 0.01f, 1.0e-3f));
 
-    // lecture du releve a une date quelconque, pente prolongee au-dela des 3 s
     auto releve = [&p, pasMs] (float ms)
     {
         if (ms <= 0.0f) return p.enveloppeDb[0];
@@ -194,9 +247,8 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
     };
     auto xDe = [z] (int i) { return z.getX() + (float) i / (kPointsCourbe - 1) * z.getWidth(); };
 
-    // --- graduations en secondes : elles suivent l'echelle
     const float pasSec = T <= 1.5f ? 0.25f : (T <= 4.0f ? 0.5f : (T <= 8.0f ? 1.0f : 2.0f));
-    g.setFont (juce::FontOptions (8.0f));
+    g.setFont (juce::FontOptions (8.5f));
     for (float s = pasSec; s < T - 1.0e-4f; s += pasSec)
     {
         const float x = z.getX() + s / T * z.getWidth();
@@ -204,13 +256,12 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
         g.drawLine (x, z.getY(), x, z.getBottom(), 1.0f);
         g.setColour (pal.lueurFaible);
         g.drawText (juce::String (s, s < 1.0f ? 2 : 0).trimCharactersAtEnd ("0").trimCharactersAtEnd ("."),
-                    juce::Rectangle<float> (x + 2.0f, z.getBottom() - 11.0f, 26.0f, 10.0f),
+                    juce::Rectangle<float> (x + 2.0f, z.getBottom() - 12.0f, 26.0f, 11.0f),
                     juce::Justification::centredLeft);
     }
 
-    // --- le trace, et son remplissage : ILS BOUGENT ENSEMBLE.
-    // ⚠️ Un remplissage immobile sous une courbe mobile ne se lit pas comme
-    // « voici la reference », ca se lit comme un bug d'affichage.
+    // ⚠️ Le fond suit le trait. Un remplissage immobile sous une courbe mobile ne
+    // se lit pas comme « voici la reference », ca se lit comme un bug d'affichage.
     juce::Path trace, aire;
     trace.startNewSubPath (xDe (0), yDe (val[0]));
     for (int i = 1; i < kPointsCourbe; ++i) trace.lineTo (xDe (i), yDe (val[(size_t) i]));
@@ -242,10 +293,8 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
     }
 
     g.setColour (pal.lueur);
-    g.strokePath (trace, juce::PathStrokeType (1.4f));
+    g.strokePath (trace, juce::PathStrokeType (1.5f));
 
-    // le temps de melange mesure : l'instant ou la queue devient un bruit —
-    // c'est lui qui separe une salle d'une plaque a l'oreille
     const float xm = z.getX() + (p.melangeMs * 0.001f) / T * z.getWidth();
     if (xm < z.getRight() - 4.0f)
     {
@@ -254,12 +303,12 @@ void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
         g.drawDashedLine ({ xm, z.getY(), xm, z.getBottom() }, pointille, 2, 1.0f);
         g.setColour (pal.lueurFaible);
         g.drawText ("MELANGE " + juce::String ((int) p.melangeMs) + " MS",
-                    juce::Rectangle<float> (xm + 3.0f, z.getY(), 90.0f, 10.0f),
+                    juce::Rectangle<float> (xm + 3.0f, z.getY(), 96.0f, 11.0f),
                     juce::Justification::centredLeft);
     }
     g.setColour (pal.lueurFaible);
     g.drawText (juce::String (T, T < 1.0f ? 2 : 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") + " S",
-                juce::Rectangle<float> (z.getRight() - 30.0f, z.getY(), 30.0f, 10.0f),
+                juce::Rectangle<float> (z.getRight() - 32.0f, z.getY(), 32.0f, 11.0f),
                 juce::Justification::centredRight);
 }
 
@@ -267,29 +316,26 @@ void Ecran::dessinerSpectre (juce::Graphics& g, juce::Rectangle<float> z)
 {
     g.setColour (pal.lueurFaible);
     g.setFont (juce::FontOptions (8.0f));
-    g.drawText ("REPONSE - BOUGE AVEC TILT, PAS AVEC COLOR",
-                z.removeFromTop (10.0f), juce::Justification::centredLeft);
+    g.drawText ("REPONSE EN FREQUENCES", z.removeFromTop (11.0f),
+                juce::Justification::centredLeft);
 
     const Programme& p = kProgrammes[iProg];
     const float zero = z.getCentreY();
     g.setColour (pal.lueur.withAlpha (0.28f));
     g.drawLine (z.getX(), zero, z.getRight(), zero, 1.0f);
 
-    // ⚠️ C'est ici que TILT s'affiche, et c'est ici que COLOR PROUVE qu'il ne
-    // touche pas au timbre : les deux courbes de compensation existent
-    // exactement pour que ces barres ne bougent pas quand on tourne COLOR.
     const float larg = z.getWidth() / kTailleSpectre;
     for (int i = 0; i < kTailleSpectre; ++i)
     {
         const float f = 250.0f * std::pow (16000.0f / 250.0f, (float) i / (kTailleSpectre - 1));
-        float v = p.spectreDb[i] + (tilt * 0.5f)
-                    * juce::jlimit (-1.0f, 1.0f, std::log2 (f / 700.0f) / 3.0f);
+        const float v = p.spectreDb[i] + (tilt * 0.5f)
+                          * juce::jlimit (-1.0f, 1.0f, std::log2 (f / 700.0f) / 3.0f);
         const float t = juce::jlimit (-1.0f, 1.0f, v / 12.0f);
         const float h = juce::jmax (1.0f, std::abs (t) * z.getHeight() * 0.5f);
         g.setColour (pal.lueur.withAlpha (0.6f));
-        g.fillRect (juce::Rectangle<float> (z.getX() + i * larg + 1.5f,
+        g.fillRect (juce::Rectangle<float> (z.getX() + i * larg + 1.0f,
                                             t >= 0.0f ? zero - h : zero,
-                                            juce::jmax (larg - 3.0f, 1.0f), h));
+                                            juce::jmax (larg - 2.0f, 1.0f), h));
     }
 }
 
@@ -297,12 +343,12 @@ void Ecran::dessinerCercles (juce::Graphics& g, juce::Rectangle<float> z)
 {
     g.setColour (pal.lueurFaible);
     g.setFont (juce::FontOptions (8.0f));
-    g.drawText ("STEREO", z.removeFromTop (10.0f), juce::Justification::centredLeft);
+    g.drawText ("STEREO", z.removeFromTop (11.0f), juce::Justification::centredLeft);
 
     // ⚠️ L'ecartement EST la decorrelation : un seul disque en mono
     // (correlation +1), deux disques imbriques a la reference (correlation 0),
     // detaches au-dela. La figure dit ce que mesure la correlation, sans chiffre.
-    const float R = juce::jmin (9.5f, z.getHeight() * 0.42f);
+    const float R = juce::jmin (10.0f, z.getHeight() * 0.44f);
     const float e = R * 0.65f * (stereo * 0.01f);
     const auto c = z.getCentre();
 
@@ -318,10 +364,10 @@ void Ecran::dessinerCercles (juce::Graphics& g, juce::Rectangle<float> z)
 
 void Ecran::dessinerHeadroom (juce::Graphics& g, juce::Rectangle<float> z)
 {
-    // Quatre temoins comme sur les unites Lexicon. La quatrieme est le plafond
+    // Quatre temoins comme sur les unites Lexicon. Le quatrieme est le plafond
     // d'entree du manuel (+15 dBV) : au-dela, l'etage d'entree ecrete.
     static constexpr float seuils[4] = { -24.0f, -12.0f, -4.0f, 0.0f };
-    constexpr float hb = 11.0f, gap = 3.0f;
+    constexpr float hb = 12.0f, gap = 4.0f;
     const float total = 4 * hb + 3 * gap;
 
     auto bandeau = z.removeFromRight (15.0f).withHeight (total).withY (z.getBottom() - total);
@@ -337,7 +383,6 @@ void Ecran::dessinerHeadroom (juce::Graphics& g, juce::Rectangle<float> z)
         g.fillRect (r);
     }
 
-    // titre colle au bandeau, pas flottant le long de la colonne
     g.setColour (pal.lueurFaible);
     g.setFont (juce::FontOptions (7.5f));
     juce::Graphics::ScopedSaveState s (g);
@@ -355,32 +400,25 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
     setLookAndFeel (&apparence);
     addAndMakeVisible (ecran);
 
-    // La grille de douze : douze programmes se choisissent d'un clic, pas en
-    // tournant un bouton. Un selecteur rotatif fonctionne sur une machine, ou
-    // tourner est le seul geste disponible ; dans un plugin, c'est douze crans a
-    // traverser pour atteindre le douzieme.
     auto* choix = dynamic_cast<juce::AudioParameterChoice*> (proc.etat.getParameter ("programme"));
     for (int i = 0; i < kNombreProgrammes; ++i)
     {
         auto* b = cellules.add (new juce::TextButton (juce::String (kProgrammes[i].nom).toUpperCase()));
+        b->setLookAndFeel (&apparenceCellule);
         b->setClickingTogglesState (false);
-        b->setColour (juce::TextButton::buttonColourId, pal.lueur.withAlpha (0.14f));
-        b->setColour (juce::TextButton::buttonOnColourId, pal.lueur.withAlpha (0.22f));
-        b->setColour (juce::TextButton::textColourOffId, pal.lueurFaible);
-        b->setColour (juce::TextButton::textColourOnId, pal.lueur);
         b->onClick = [this, i, choix]
         {
             if (choix == nullptr) return;
             choix->beginChangeGesture();
             *choix = i;
             choix->endChangeGesture();
-            // Le programme impose ses reglages d'usine : Decay et Pre-Delay de
-            // la Program table du manuel.
-            proc.etat.getParameter ("decay")->setValueNotifyingHost (
-                proc.etat.getParameter ("decay")->convertTo0to1 (
+            // Le programme impose ses reglages d'usine : Decay et Pre-Delay de la
+            // Program table du manuel.
+            if (auto* d = proc.etat.getParameter ("decay"))
+                d->setValueNotifyingHost (d->convertTo0to1 (
                     juce::jlimit (kProgrammes[i].t60Min, kProgrammes[i].t60Max, kProgrammes[i].t60S)));
-            proc.etat.getParameter ("predelai")->setValueNotifyingHost (
-                proc.etat.getParameter ("predelai")->convertTo0to1 (kProgrammes[i].predelaiUsineMs));
+            if (auto* pd = proc.etat.getParameter ("predelai"))
+                pd->setValueNotifyingHost (pd->convertTo0to1 (kProgrammes[i].predelaiUsineMs));
         };
         addAndMakeVisible (b);
     }
@@ -396,7 +434,7 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
 
     lecture.setColour (juce::Label::textColourId, pal.lueur);
     lecture.setJustificationType (juce::Justification::centredLeft);
-    lecture.setFont (juce::FontOptions (11.0f));
+    lecture.setFont (juce::FontOptions (12.0f));
     addAndMakeVisible (lecture);
 
     setSize (kLargeur, kHauteur);
@@ -405,6 +443,7 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
 
 LuxRevEditor::~LuxRevEditor()
 {
+    for (auto* b : cellules) b->setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
 
@@ -414,13 +453,7 @@ void LuxRevEditor::construireBouton (juce::Slider& s, juce::Label& l,
 {
     s.setSliderStyle (juce::Slider::RotaryVerticalDrag);
     s.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    s.setRotaryParameters (juce::MathConstants<float>::pi * 0.78f,
-                           juce::MathConstants<float>::pi * (2.0f - 0.78f), true);
-    // ⚠️ Le double-clic ramene au reglage D'USINE DU PROGRAMME, pas a un defaut
-    // unique pour tout le plugin : « Decay par defaut » ne veut rien dire dans
-    // l'absolu — 0,6 s sur Gate, 2,6 s sur Hall B. Un defaut global ferait sortir
-    // du programme des qu'on annule un geste. C'est l'attache qui pose le sien,
-    // et on le corrige a chaque changement de programme dans timerCallback().
+    s.setRotaryParameters (kAngleDebut, kAngleFin, true);
     s.setDoubleClickReturnValue (true, s.getValue());
     apparence.poserCentre (s, centre);
     addAndMakeVisible (s);
@@ -428,7 +461,7 @@ void LuxRevEditor::construireBouton (juce::Slider& s, juce::Label& l,
     l.setText (nom, juce::dontSendNotification);
     l.setJustificationType (juce::Justification::centred);
     l.setColour (juce::Label::textColourId, pal.serigraphie);
-    l.setFont (juce::FontOptions (9.0f).withStyle ("bold"));
+    l.setFont (juce::FontOptions (9.5f).withStyle ("bold"));
     addAndMakeVisible (l);
 
     auto& a = (id == "decay")    ? aDecay
@@ -437,6 +470,21 @@ void LuxRevEditor::construireBouton (juce::Slider& s, juce::Label& l,
             : (id == "stereo")   ? aStereo
             : (id == "tilt")     ? aTilt : aMix;
     a = std::make_unique<Attache> (proc.etat, id, s);
+}
+
+//==============================================================================
+void LuxRevEditor::mouseDown (const juce::MouseEvent& e)
+{
+    // La diode et le titre forment un interrupteur invisible. A l'arret, SEULS
+    // la diode et l'ecran se grisent : le panneau garde son aspect, comme une
+    // machine eteinte dont la face avant est toujours la.
+    if (! zoneInterrupteur.contains (e.getPosition())) return;
+    if (auto* a = proc.etat.getParameter ("actif"))
+    {
+        a->beginChangeGesture();
+        a->setValueNotifyingHost (a->getValue() > 0.5f ? 0.0f : 1.0f);
+        a->endChangeGesture();
+    }
 }
 
 void LuxRevEditor::timerCallback()
@@ -453,14 +501,16 @@ void LuxRevEditor::timerCallback()
     const float ster  = proc.etat.getRawParameterValue ("stereo")->load();
     const float tilt  = proc.etat.getRawParameterValue ("tilt")->load();
     const float mix   = proc.etat.getRawParameterValue ("mix")->load();
+    const bool  actif = proc.etat.getRawParameterValue ("actif")->load() > 0.5f;
 
-    // le double-clic suit le programme courant
     sDecay.setDoubleClickReturnValue (true,
         juce::jlimit (kProgrammes[ip].t60Min, kProgrammes[ip].t60Max, kProgrammes[ip].t60S));
     sPredelai.setDoubleClickReturnValue (true, kProgrammes[ip].predelaiUsineMs);
 
+    ecran.poserAllume (actif);
     ecran.poserEtat (ip, decay, pre, color, ster, tilt, mix);
-    ecran.poserNiveau (proc.niveauEntreeDb.load());
+    ecran.poserNiveau (actif ? proc.niveauEntreeDb.load() : -100.0f);
+    repaint (zoneInterrupteur);
 
     // L'ecran affiche le parametre qu'on est en train de bouger : c'est ce qui
     // autorise des boutons nus et des etiquettes courtes.
@@ -480,8 +530,6 @@ void LuxRevEditor::paint (juce::Graphics& g)
     auto zone = getLocalBounds().toFloat();
     g.fillAll (pal.fond);
 
-    // le panneau : un noir fume, rechauffe. Le vieillissement se lit dans la
-    // couleur, jamais dans des ornements ajoutes.
     auto panneau = zone.reduced (8.0f);
     juce::ColourGradient grad (pal.panneauA, panneau.getX() + panneau.getWidth() * 0.12f, panneau.getY(),
                                pal.panneauC, panneau.getRight(), panneau.getBottom(), true);
@@ -491,23 +539,23 @@ void LuxRevEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.drawRoundedRectangle (panneau.reduced (0.5f), 7.0f, 1.0f);
 
-    // la marque, et la diode
+    const bool actif = proc.etat.getRawParameterValue ("actif")->load() > 0.5f;
+
     const float x = panneau.getX() + 18.0f;
     const float y = panneau.getY() + 16.0f;
-    g.setColour (pal.lueur);
-    g.fillEllipse (x, y + 9.0f, 6.0f, 6.0f);
+    g.setColour (actif ? pal.lueur : pal.serigraphie2.withAlpha (0.45f));
+    g.fillEllipse (x, y + 9.0f, 7.0f, 7.0f);
     g.setColour (pal.serigraphie);
-    g.setFont (juce::FontOptions (22.0f).withStyle ("bold"));
-    g.drawText ("LuxRev-1", juce::Rectangle<float> (x + 14.0f, y, 220.0f, 24.0f),
+    g.setFont (juce::FontOptions (23.0f).withStyle ("bold"));
+    g.drawText ("LuxRev-1", juce::Rectangle<float> (x + 16.0f, y, 220.0f, 25.0f),
                 juce::Justification::centredLeft);
     g.setColour (pal.serigraphie2);
     g.setFont (juce::FontOptions (9.0f));
     g.drawText ("DIGITAL REVERBERATOR",
-                juce::Rectangle<float> (panneau.getRight() - 220.0f, y, 202.0f, 24.0f),
+                juce::Rectangle<float> (panneau.getRight() - 220.0f, y, 202.0f, 25.0f),
                 juce::Justification::centredRight);
 
-    // la bande, delavee par endroits comme une serigraphie qui a pris le jour
-    auto bande = juce::Rectangle<float> (panneau.getX() + 18.0f, y + 30.0f,
+    auto bande = juce::Rectangle<float> (panneau.getX() + 18.0f, y + 32.0f,
                                          panneau.getWidth() - 36.0f, 4.0f);
     juce::ColourGradient gb (pal.bande, bande.getX(), 0.0f, pal.bande, bande.getRight(), 0.0f, false);
     gb.addColour (0.34, pal.bande2.brighter (0.25f));
@@ -519,31 +567,36 @@ void LuxRevEditor::paint (juce::Graphics& g)
 void LuxRevEditor::resized()
 {
     auto zone = getLocalBounds().reduced (8).reduced (18, 0);
-    zone.removeFromTop (54);
 
-    ecran.setBounds (zone.removeFromTop (176));
-    zone.removeFromTop (10);
+    // la diode et le titre : l'interrupteur invisible
+    zoneInterrupteur = juce::Rectangle<int> (zone.getX() - 2, 16, 200, 30);
 
-    // la grille de douze, quatre colonnes
-    auto grille = zone.removeFromTop (86);
+    zone.removeFromTop (56);
+    zone.removeFromBottom (12);
+
+    ecran.setBounds (zone.removeFromTop (200));
+    zone.removeFromTop (12);
+
+    auto grille = zone.removeFromTop (100);
     constexpr int cols = 4, rows = 3;
     const int lc = grille.getWidth() / cols, lh = grille.getHeight() / rows;
     for (int i = 0; i < cellules.size(); ++i)
         cellules[i]->setBounds (juce::Rectangle<int> (grille.getX() + (i % cols) * lc,
                                                       grille.getY() + (i / cols) * lh,
-                                                      lc - 4, lh - 4));
-    zone.removeFromTop (8);
+                                                      lc - 5, lh - 5));
+    zone.removeFromTop (10);
 
-    auto rangee = zone.removeFromTop (96);
+    auto rangee = zone.removeFromTop (118);
     juce::Slider* sl[] = { &sDecay, &sPredelai, &sColor, &sStereo, &sTilt, &sMix };
     juce::Label*  la[] = { &lDecay, &lPredelai, &lColor, &lStereo, &lTilt, &lMix };
     const int pas = rangee.getWidth() / 6;
     for (int i = 0; i < 6; ++i)
     {
         auto c = juce::Rectangle<int> (rangee.getX() + i * pas, rangee.getY(), pas, rangee.getHeight());
-        la[i]->setBounds (c.removeFromTop (14));
-        sl[i]->setBounds (c.reduced (6, 2));
+        la[i]->setBounds (c.removeFromTop (16));
+        sl[i]->setBounds (c.reduced (4, 2));
     }
 
-    lecture.setBounds (zone.removeFromTop (24).reduced (6, 0));
+    zone.removeFromTop (6);
+    lecture.setBounds (zone.removeFromTop (28).reduced (8, 0));
 }

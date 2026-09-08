@@ -6,10 +6,9 @@
 //==============================================================================
 /** Palette de la facade. Portage de maquettes/commun.css.
 
-    Direction : un Lexicon qui a vieilli. Sombre par defaut, bleu ; version
-    claire en rouge gardee en reserve. Le vieillissement se lit dans la COULEUR,
-    jamais dans des ornements ajoutes — Lexicon n'a jamais fait de bois ni de vis
-    dorees, leurs machines etaient sobres.
+    Direction : un Lexicon qui a vieilli. Sombre, bleu ; la version claire en
+    rouge reste en reserve. Le vieillissement se lit dans la COULEUR, jamais dans
+    des ornements ajoutes — Lexicon n'a jamais fait de bois ni de vis dorees.
 */
 struct Palette
 {
@@ -55,12 +54,33 @@ private:
 };
 
 //==============================================================================
+/** Les douze cellules de la grille de programmes.
+
+    ⚠️ Sans cette apparence, JUCE dessine ses propres boutons — coins arrondis,
+    degrade, bordure claire — et la grille jure avec le reste de la facade. La
+    maquette pose des rectangles plats sur du verre, avec une lueur sur celui qui
+    est choisi.
+*/
+class ApparenceCellule : public juce::LookAndFeel_V4
+{
+public:
+    explicit ApparenceCellule (const Palette& p) : pal (p) {}
+
+    void drawButtonBackground (juce::Graphics&, juce::Button&,
+                               const juce::Colour&, bool survol, bool enfonce) override;
+    void drawButtonText (juce::Graphics&, juce::TextButton&,
+                         bool survol, bool enfonce) override;
+
+private:
+    const Palette& pal;
+};
+
+//==============================================================================
 /** L'ecran : il fait DEUX metiers, comme celui du Model 200.
 
     1. il montre la decroissance du programme — l'enveloppe REELLEMENT MESUREE,
        transformee par les commandes ;
-    2. il affiche la reponse en frequence, qui bouge avec TILT et prouve que
-       COLOR ne touche pas au timbre.
+    2. il affiche la reponse en frequences.
 
     ⚠️ Trois transformations sont exactes (Decay dilate le temps, Pre-Delay
     decale, Mix descend le niveau) ; la quatrieme ne l'est pas. COLOR n'a pas
@@ -76,6 +96,7 @@ public:
     void poserEtat (int programme, float decay, float predelaiMs,
                     float color, float stereo, float tilt, float mix);
     void poserNiveau (float db) { niveauDb = db; }
+    void poserAllume (bool o) { allume = o; }
 
 private:
     void dessinerCourbe (juce::Graphics&, juce::Rectangle<float>);
@@ -90,6 +111,7 @@ private:
     float decay = 2.6f, predelaiMs = 33.0f, color = 50.0f;
     float stereo = 100.0f, tilt = 0.0f, mix = 100.0f;
     float niveauDb = -100.0f;
+    bool  allume = true;
 };
 
 //==============================================================================
@@ -102,6 +124,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
 
 private:
     void timerCallback() override;
@@ -110,13 +133,16 @@ private:
 
     LuxRevProcessor& proc;
     Palette pal;
-    ApparenceBouton apparence { pal };
+    ApparenceBouton  apparence { pal };
+    ApparenceCellule apparenceCellule { pal };
 
     Ecran ecran;
     juce::OwnedArray<juce::TextButton> cellules;      // la grille des 12 programmes
     juce::Slider sDecay, sPredelai, sColor, sStereo, sTilt, sMix;
     juce::Label  lDecay, lPredelai, lColor, lStereo, lTilt, lMix;
     juce::Label  lecture;                             // le parametre en cours de reglage
+
+    juce::Rectangle<int> zoneInterrupteur;            // diode + titre : marche/arret
 
     using Attache = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<Attache> aDecay, aPredelai, aColor, aStereo, aTilt, aMix;

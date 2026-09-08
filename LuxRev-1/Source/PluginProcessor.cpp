@@ -17,6 +17,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout LuxRevProcessor::construireP
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout l;
 
+    // ⚠️ La diode et le titre de la facade sont un interrupteur INVISIBLE, mais
+    // ce qu'ils commandent doit rester un vrai parametre : sinon l'hote ne peut
+    // ni l'automatiser ni le rappeler avec le projet.
+    l.add (std::make_unique<AudioParameterBool> (
+        ParameterID { "actif", 1 }, "Actif", true));
+
     l.add (std::make_unique<AudioParameterChoice> (
         ParameterID { "programme", 1 }, "Programme", nomsProgrammes(), 6));   // Hall B
 
@@ -68,6 +74,7 @@ LuxRevProcessor::LuxRevProcessor()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       etat (*this, nullptr, "LUXREV", construireParametres())
 {
+    pActif     = etat.getRawParameterValue ("actif");
     pProgramme = etat.getRawParameterValue ("programme");
     pDecay     = etat.getRawParameterValue ("decay");
     pPredelai  = etat.getRawParameterValue ("predelai");
@@ -210,7 +217,11 @@ void LuxRevProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float* wetR = tampon.getWritePointer (2);
     moteur.traiter (mono, wetL, wetR, n);
 
-    mixLisse.setTargetValue (pMix->load() * 0.01f);
+    // A l'arret, on descend le humide a zero au lieu de couper net : un
+    // interrupteur qui claque est un interrupteur rate, et l'hote peut
+    // l'automatiser.
+    const bool actif = pActif->load() > 0.5f;
+    mixLisse.setTargetValue (actif ? pMix->load() * 0.01f : 0.0f);
 
     if (nSorties >= 2)
     {

@@ -79,6 +79,7 @@ private:
     float dernierDecay = -1.0f, dernierPredelai = -1.0f, dernierColor = -1.0f;
     float dernierStereo = -1.0f, dernierTilt = -1000.0f;
 
+    std::atomic<float>* pActif     = nullptr;
     std::atomic<float>* pProgramme = nullptr;
     std::atomic<float>* pDecay     = nullptr;
     std::atomic<float>* pPredelai  = nullptr;

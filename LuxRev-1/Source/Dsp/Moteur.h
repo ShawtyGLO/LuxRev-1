@@ -168,7 +168,23 @@ class Moteur
 {
 public:
     static constexpr int kNPrisesFf = 12;
-    static constexpr int kSlack = 4;      // avance de l'anneau interne, en echantillons
+    /** Avance de l'anneau interne sur la lecture, en echantillons internes.
+
+        ⚠️ ELLE DOIT COUVRIR LE REGARD EN AVANT DU DECIMATEUR. Le noyau lit
+        kTaps echantillons d'hote autour du point vise, donc la production ne
+        peut demarrer qu'une fois ce contexte disponible — elle prend kTaps
+        echantillons de retard une fois pour toutes, au premier bloc. Si la
+        lecture part sans cette avance, elle double la production et n'y revient
+        JAMAIS : le bloqueur relit alors le dernier echantillon disponible sur la
+        fin de chaque bloc.
+
+        Mesure du defaut, avant correction : marge de -38 echantillons internes,
+        stable quelle que soit la taille de bloc (64 a 1024). Cela figeait ~11 %
+        de chaque bloc — inaudible comme repetition, puisque le palier traverse
+        ensuite les filtres de reconstruction qui le rendent variable, mais
+        parfaitement audible comme gresillement au rythme du bloc.
+    */
+    int slack = 64;
 
     /** Court-circuite le tank : seule la chaine de conversion travaille.
 
@@ -202,6 +218,11 @@ public:
         correctif de Gate et Inverse. */
     bool porteActive = true;
 
+    /** Marge minimale observee entre production et consommation, en echantillons
+        internes. Crochet de diagnostic : si elle atteint zero, le bloqueur relit
+        le dernier echantillon et la sortie se fige. */
+    long long margeMinimale = 1 << 30;
+
     //--------------------------------------------------------------------------
     /** Alloue tout, pour le pire cas. Jamais appele depuis le fil audio. */
     void preparer (double sampleRateHote)
@@ -210,6 +231,9 @@ public:
         ratio  = fsHote / kFsInterne;
 
         interp.preparer (ratio);
+        // le retard pris une fois par le regard en avant du decimateur, plus une
+        // marge pour la gigue de taille de bloc
+        slack = (int) std::ceil ((double) Decimateur::kTaps / ratio) + 16;
         anneauIn.assign ((size_t) kTailleAnneau, 0.0f);
         anneauL.assign  ((size_t) kTailleAnneau, 0.0f);
         anneauR.assign  ((size_t) kTailleAnneau, 0.0f);
@@ -263,7 +287,8 @@ public:
         std::fill (anneauIn.begin(), anneauIn.end(), 0.0f);
         std::fill (anneauL.begin(),  anneauL.end(),  0.0f);
         std::fill (anneauR.begin(),  anneauR.end(),  0.0f);
-        ecritsIn = 0; ecritsInterne = kSlack; posLecture = 0.0; posSortie = 0.0;
+        ecritsIn = 0; ecritsInterne = slack; posLecture = 0.0; posSortie = 0.0;
+        margeMinimale = 1 << 30;
 
         preSos.vider(); deSosL.vider(); deSosR.vider();
         aa.vider(); murL.vider(); murR.vider(); tiltL.vider(); tiltR.vider();
@@ -400,7 +425,7 @@ public:
 
     int latenceEchantillons() const noexcept
     {
-        return sincL.latence() + voicingL.latence() + (int) std::ceil (ratio * kSlack);
+        return sincL.latence() + voicingL.latence() + (int) std::ceil (ratio * slack);
     }
 
     //--------------------------------------------------------------------------
@@ -439,6 +464,7 @@ public:
         for (int i = 0; i < n; ++i)
         {
             long long k = (long long) posSortie;
+            margeMinimale = std::min (margeMinimale, ecritsInterne - 1 - k);
             k = std::min (k, ecritsInterne - 1);
             k = std::max (k, 0LL);
             posSortie += pas;
@@ -641,7 +667,7 @@ private:
     const Programme* programme = nullptr;
 
     double fsHote = 48000.0, ratio = 48000.0 / kFsInterne;
-    long long ecritsIn = 0, ecritsInterne = kSlack;
+    long long ecritsIn = 0, ecritsInterne = 0;
     double posLecture = 0.0, posSortie = 0.0;
     std::vector<float> anneauIn, anneauL, anneauR;
     Decimateur interp;
