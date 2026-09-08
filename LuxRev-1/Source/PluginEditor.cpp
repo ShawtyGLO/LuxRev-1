@@ -8,7 +8,7 @@ namespace
     // tout l'argument du format « remote » — le MRC de Lexicon ne ressemble pas a
     // une face avant de rack. Une premiere version a 700 x 470 ecrasait la facade
     // et coupait la ligne de lecture du bas.
-    constexpr int   kLargeur = 700, kHauteur = 596;
+    constexpr int   kLargeur = 700, kHauteur = 612;
     constexpr float kPlancherDb = -60.0f;
 
     /** Fenetres d'affichage, en secondes. La courbe doit tenir ENTIERE : a
@@ -194,7 +194,7 @@ void Ecran::paint (juce::Graphics& g)
     // ⚠️ La reponse en frequences est reduite a une bande etroite. Elle occupait
     // presque toute la largeur, ce qui lui donnait un poids qu'elle n'a pas : la
     // courbe de decroissance est l'information principale de cet ecran.
-    auto bas = inner.removeFromBottom (48.0f);
+    auto bas = inner.removeFromBottom (44.0f);
     dessinerCourbe (g, inner.reduced (0.0f, 5.0f));
 
     g.setColour (pal.lueur.withAlpha (0.18f));
@@ -354,7 +354,7 @@ void Ecran::dessinerCercles (juce::Graphics& g, juce::Rectangle<float> z)
     // ⚠️ L'ecartement EST la decorrelation : un seul disque en mono
     // (correlation +1), deux disques imbriques a la reference (correlation 0),
     // detaches au-dela. La figure dit ce que mesure la correlation, sans chiffre.
-    const float R = juce::jmin (10.0f, z.getHeight() * 0.44f);
+    const float R = juce::jmin (13.0f, z.getHeight() * 0.46f);
     const float e = R * 0.65f * (stereo * 0.01f);
     const auto c = z.getCentre();
 
@@ -601,10 +601,10 @@ void LuxRevEditor::resized()
     zone.removeFromTop (56);
     zone.removeFromBottom (12);
 
-    ecran.setBounds (zone.removeFromTop (200));
+    ecran.setBounds (zone.removeFromTop (226));
     zone.removeFromTop (12);
 
-    auto grille = zone.removeFromTop (100);
+    auto grille = zone.removeFromTop (96);
     constexpr int cols = 4, rows = 3;
     const int lc = grille.getWidth() / cols, lh = grille.getHeight() / rows;
     for (int i = 0; i < cellules.size(); ++i)
@@ -613,7 +613,7 @@ void LuxRevEditor::resized()
                                                       lc - 5, lh - 5));
     zone.removeFromTop (10);
 
-    auto rangee = zone.removeFromTop (118);
+    auto rangee = zone.removeFromTop (128);
 
     // ENTREE est plus petit que les six autres : c'est un reglage de niveau, pas
     // une commande de caractere, et la facade doit le dire.
@@ -635,6 +635,6 @@ void LuxRevEditor::resized()
     }
 
     zone.removeFromTop (8);
-    zoneLecture = zone.removeFromTop (30);
+    zoneLecture = zone.removeFromTop (32);
     lecture.setBounds (zoneLecture.reduced (14, 0));
 }

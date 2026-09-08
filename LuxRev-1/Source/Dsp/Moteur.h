@@ -252,6 +252,11 @@ public:
         Biquad tmp[Chaine::kMaxSections];
         aa.poser (tmp, butterworthPasseBas (tmp, 6, 15200.0, fsHote));
 
+        // Deux passe-tout etales sur le spectre : le dephasage varie avec la
+        // frequence, ce qui se lit comme de la largeur au lieu d'un trou.
+        const Biquad ap[2] = { passeTout1 (320.0, fsHote), passeTout1 (2600.0, fsHote) };
+        apCote.poser (ap, 2);
+
         const auto sinc = correctionSinc (fsHote);
         sincL.preparer ((int) sinc.size()); sincL.poser (sinc.data(), (int) sinc.size());
         sincR.preparer ((int) sinc.size()); sincR.poser (sinc.data(), (int) sinc.size());
@@ -301,7 +306,7 @@ public:
         margeMinimale = 1 << 30;
 
         preSos.vider(); deSosL.vider(); deSosR.vider();
-        aa.vider(); murL.vider(); murR.vider(); tiltL.vider(); tiltR.vider();
+        aa.vider(); murL.vider(); murR.vider(); tiltL.vider(); tiltR.vider(); apCote.vider();
         sincL.vider(); sincR.vider(); voicingL.vider(); voicingR.vider();
 
         predelai.vider(); predelai.caler();
@@ -406,6 +411,14 @@ public:
             posPorte = (double) nPorte;         // au repos : profil epuise
         }
 
+        // ⚠️ Le dosage plafonne a 0,5, et ce n'est pas de la prudence : melanger
+        // le cote a MOITIE avec sa version dephasee donne un peigne, donc une
+        // correlation qui varie avec la frequence. A dosage 1,0 on remplace le
+        // cote par un passe-tout PUR — meme module dans chaque bande, donc
+        // exactement la meme correlation qu'avant : l'effet disparait. Mesure
+        // faite, l'ecart-type par bande retombait de 0,26 a 0,02.
+        dosageLargeur = 0.5f * std::clamp ((reg.stereo - 1.0f) / 0.6f, 0.0f, 1.0f);
+
         tiltActif = std::abs (reg.tiltDb) > 0.01f;
         if (tiltActif)
         {
@@ -485,8 +498,19 @@ public:
 
             if (std::abs (reg.stereo - 1.0f) > 1e-3f)
             {
-                const float mid  = (L + R) * 0.5f;
-                const float cote = (L - R) * 0.5f * reg.stereo;
+                const float mid = (L + R) * 0.5f;
+                float cote = (L - R) * 0.5f * reg.stereo;
+
+                // ⚠️ Au-dessus de 100 %, on ne se contente pas d'amplifier le
+                // cote. Sur une queue deja totalement decorrelee — correlation
+                // mesuree 0,00 a 0,02 — l'amplifier ne fabrique aucune largeur :
+                // l'oreille lit un creux, pas un elargissement. On ajoute donc un
+                // dephasage qui VARIE avec la frequence, ce qui se lit comme de
+                // la largeur. Le milieu n'est pas touche, donc la somme mono non
+                // plus. A 100 % pile, dosage nul : la reference est intacte.
+                if (dosageLargeur > 0.0f)
+                    cote += dosageLargeur * (apCote.traiter (cote) - cote);
+
                 L = mid + cote; R = mid - cote;
             }
             if (tiltActif) { L = tiltL.traiter (L); R = tiltR.traiter (R); }
@@ -689,7 +713,8 @@ private:
     Decimateur interp;
 
     Biquad preSos, deSosL, deSosR;
-    Chaine aa, murL, murR, tiltL, tiltR;
+    Chaine aa, murL, murR, tiltL, tiltR, apCote;
+    float dosageLargeur = 0.0f;
     Fir sincL, sincR, voicingL, voicingR;
     bool tiltActif = false;
 

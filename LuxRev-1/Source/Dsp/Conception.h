@@ -101,6 +101,24 @@ inline Biquad tilt (double db, double pivotHz, double fs)
     return bilineaire1 (1.0 / w, 1.0 / G, 1.0 / (G * w), 1.0, fs);
 }
 
+/** Passe-tout du 1er ordre : plat en module, il ne deplace que la phase.
+
+    Sert a DECORRELER le canal de cote. ⚠️ Ce n'est pas cosmetique : au-dela
+    d'une correlation nulle, amplifier le cote ne rend pas le son plus large, il
+    le rend plus creux — l'oreille ne lit plus de largeur, elle lit un trou. Un
+    dephasage qui varie avec la frequence, lui, se lit comme de la largeur, et il
+    laisse le milieu intact donc la somme mono aussi.
+*/
+inline Biquad passeTout1 (double fc, double fs)
+{
+    const double t = std::tan (kPi * std::clamp (fc, 20.0, fs * 0.45) / fs);
+    const double a = (t - 1.0) / (t + 1.0);
+    Biquad b;
+    b.b0 = a; b.b1 = 1.0; b.b2 = 0.0;
+    b.a1 = a; b.a2 = 0.0;
+    return b;
+}
+
 //==============================================================================
 /** FIR compensant l'enveloppe sin(x)/x du bloqueur d'ordre zero.
 
