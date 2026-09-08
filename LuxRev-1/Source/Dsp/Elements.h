@@ -214,7 +214,11 @@ public:
     inline Ech traiter (Ech x, double decalage) noexcept
     {
         courant += (cible - courant) * kGliss;
-        const double p = courant + decalage;
+        // ⚠️ Garde-fou. Le dimensionnement du tampon suffit en theorie, mais un
+        // reglage qui deborde ne doit pas se traduire par la relecture d'un
+        // morceau de signal perime : le prix d'un depassement est un craquement,
+        // celui de la borne est une modulation legerement ecretee.
+        const double p = std::clamp (courant + decalage, 2.0, (double) (taille - 3));
         int    i0 = (int) p;
         double f  = p - (double) i0;
         if (f < 0.5) { i0 -= 1; f += 1.0; }     // l'allpass du 1er ordre se tient

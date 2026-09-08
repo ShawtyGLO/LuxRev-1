@@ -267,7 +267,17 @@ public:
         for (int k = 0; k < 4; ++k)
             diff[(size_t) k].preparer (transpose (kDiffuseurLongueurs[k], fs), 0.0f);
 
-        const int margeMax = (int) (kProfondeurMax * kTailleMax) + 2;
+        // ⚠️ La marge doit couvrir l'EXCURSION REELLE du modulateur, pas la
+        // profondeur nominale. Le decalage vaut
+        //     clamp(bruit, -2,5, +2,5) x profondeur x 0,4  +  profondeur x 0,5
+        // soit une plage de -0,5 a +1,5 fois la profondeur — donc la lecture peut
+        // partir a une fois et demie la profondeur AU-DELA du retard nominal.
+        //
+        // A COLOR = 0, `taille` et la modulation sont toutes deux au maximum :
+        // profondeur = 26 x 3,2 = 83,2 echantillons, excursion jusqu'a +124,8,
+        // pour 85 de marge allouee. La lecture depassait donc de 40 echantillons
+        // dans du tampon perime — ce qui craque, et seulement a ce reglage.
+        const int margeMax = (int) (1.5 * kProfondeurMax * kTailleMax) + 8;
         // ~80 ms de glissement : assez lent pour ne pas claquer, assez rapide
         // pour que le bouton reponde.
         const double kGliss = 1.0 - std::exp (-1.0 / (0.080 * fs));
