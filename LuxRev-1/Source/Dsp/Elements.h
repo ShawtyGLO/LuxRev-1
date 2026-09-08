@@ -503,9 +503,20 @@ public:
         Mesure : Gate sortait a 0,063 et Inverse a 0,021 quand les dix autres
         programmes sont entre 0,14 et 0,66. On les entendait a peine.
     */
-    void poserProfil (const float* profil, int nProfil, double pasEch, double gain)
+    void poserProfil (const float* profil, int nProfil, double pasEch, double gain,
+                      double facteurTemps = 1.0)
     {
-        const double duree = std::min ((double) (nProfil - 1) * pasEch, (double) (taille - 8));
+        // ⚠️ `facteurTemps` DILATE le motif dans le temps, et c'est exactement ce
+        // que la commande de duree fait sur ces programmes d'epoque :
+        //   AMS RMX16, NONLIN 2 — « the sound decays only very slightly for a
+        //   period of time (SET BY THE DECAY CONTROL), and then dies away very
+        //   rapidly ».
+        // Elle ne regle donc pas une vitesse de decroissance mais la LONGUEUR du
+        // palier, respectivement de la montee sur REVERSE. C'est la seule lecture
+        // qui donne un sens a Decay ici — sinon la commande ne sert a rien, et il
+        // faudrait la griser.
+        const double duree = std::min ((double) (nProfil - 1) * pasEch * facteurTemps,
+                                       (double) (taille - 8));
         for (int k = 0; k < kNPrises; ++k)
         {
             // ⚠️ Espacement pseudo-aleatoire mais STABLE. A pas regulier, un banc
@@ -515,7 +526,7 @@ public:
             const double t = std::clamp (u, 0.0, 1.0) * duree;
             prises[k] = std::clamp ((int) t, 1, taille - 4);
 
-            const double x = t / pasEch;
+            const double x = t / (pasEch * facteurTemps);
             const int j = std::min ((int) x, nProfil - 2);
             const double f = x - j;
             const double a = profil[j] + (profil[j + 1] - profil[j]) * f;

@@ -163,11 +163,12 @@ void Ecran::paint (juce::Graphics& g)
     // une machine eteinte dont la face avant est toujours la.
     if (! allume)
     {
-        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        // ⚠️ Pas de texte. Un ecran eteint ne dit pas qu'il est eteint — il est
+        // simplement eteint. Le mot ARRET faisait plus penser a un message
+        // d'erreur qu'a une machine hors tension, et la diode grisee suffit a le
+        // dire.
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.fillRoundedRectangle (zone, 4.0f);
-        g.setColour (pal.serigraphie2.withAlpha (0.5f));
-        g.setFont (juce::FontOptions (13.0f).withStyle ("bold"));
-        g.drawText ("ARRET", zone, juce::Justification::centred);
         return;
     }
 

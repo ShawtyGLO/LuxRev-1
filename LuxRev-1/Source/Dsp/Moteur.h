@@ -296,7 +296,8 @@ public:
             injections[(size_t) k].preparer (std::max ((int) (tauMax * 0.95), 1));
 
         // le banc non lineaire couvre 3 s de profil a la frequence interne
-        banc.preparer ((int) (kPasEnveloppeMs * 1e-3 * fs * 600.0) + 16);
+        // 2x la duree du profil : Decay peut le dilater jusque-la
+        banc.preparer ((int) (kPasEnveloppeMs * 1e-3 * fs * 600.0 * 2.0) + 16);
 
         ffN = (int) (kFenetreDiffMaxMs * 1e-3 * fs) + 2;
         ffBuf.assign ((size_t) ffN, 0.0);
@@ -412,9 +413,15 @@ public:
         preampli.activer (reg.preampliActif);
 
         nonLineaire = (programme != nullptr && programme->enveloppePorte != nullptr);
-        if (nonLineaire && nouveauProgramme)
+        if (nonLineaire)
+        {
+            // Decay dilate le motif : au reglage d'usine le facteur vaut 1 et le
+            // profil est celui qu'on a releve sur la machine.
+            const double f = std::clamp ((double) reg.t60S / std::max (programme->t60S, 0.01f),
+                                         0.25, 2.0);
             banc.poserProfil (programme->enveloppePorte, programme->nEnveloppePorte,
-                              kPasEnveloppeMs * 1e-3 * kFsInterne, 1.0);
+                              kPasEnveloppeMs * 1e-3 * kFsInterne, 1.0, f);
+        }
 
         // ⚠️ Le dosage plafonne a 0,5, et ce n'est pas de la prudence : melanger
         // le cote a MOITIE avec sa version dephasee donne un peigne, donc une
