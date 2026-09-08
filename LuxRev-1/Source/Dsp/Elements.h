@@ -489,7 +489,16 @@ public:
 
     void vider() { std::fill (buf.begin(), buf.end(), 0.0); i = 0; }
 
-    /** `profil` donne l'amplitude a chaque pas de `pasEch` echantillons. */
+    /** `profil` donne l'amplitude a chaque pas de `pasEch` echantillons.
+
+        ⚠️ La normalisation se fait sur l'ENERGIE REELLE des prises, pas sur leur
+        nombre. Une premiere version divisait par la racine du nombre de prises,
+        en supposant qu'elles contribuent toutes : sur une porte, l'essentiel du
+        profil est a ZERO — la queue est coupee, c'est tout l'objet du programme —
+        donc la plupart des prises ne portent rien et le niveau s'effondrait.
+        Mesure : Gate sortait a 0,063 et Inverse a 0,021 quand les dix autres
+        programmes sont entre 0,14 et 0,66. On les entendait a peine.
+    */
     void poserProfil (const float* profil, int nProfil, double pasEch, double gain)
     {
         const double duree = std::min ((double) (nProfil - 1) * pasEch, (double) (taille - 8));
@@ -507,8 +516,18 @@ public:
             const double f = x - j;
             const double a = profil[j] + (profil[j + 1] - profil[j]) * f;
 
+            brut[k] = a;
+        }
+
+        // energie totale reellement portee par les prises
+        double somme = 0.0;
+        for (int k = 0; k < kNPrises; ++k) somme += brut[k] * brut[k];
+        const double norme = (somme > 1e-12) ? gain / std::sqrt (somme) : 0.0;
+
+        for (int k = 0; k < kNPrises; ++k)
+        {
             // signes alternes : deux sorties decorrelees sans retard ajoute
-            const double g = a * gain / std::sqrt ((double) kNPrises);
+            const double g = brut[k] * norme;
             gauche[k] = (float) ((k % 4 < 2) ? g : -g);
             droite[k] = (float) ((k % 4 == 1 || k % 4 == 2) ? g : -g);
         }
@@ -533,6 +552,7 @@ private:
     std::vector<Ech> buf;
     int taille = 16, i = 0;
     int prises[kNPrises] {};
+    double brut[kNPrises] {};
     float gauche[kNPrises] {}, droite[kNPrises] {};
 };
 

@@ -1,14 +1,14 @@
 {
- "lxp1_room_small1": 2.25086,
- "lxp1_room_small2": 1.147161,
- "lxp1_room_medium1": 2.87764,
- "lxp1_room_medium2": 2.535053,
- "lxp1_room_large1": 2.864809,
- "lxp1_room_large2": 3.650423,
- "lxp1_hall_b": 4.776609,
- "lxp1_hall_d": 2.568323,
- "lxp1_room_plate_b": 2.579698,
- "lxp1_room_plate_d": 1.601592,
- "lxp1_room_gate": 0.997931,
- "lxp1_room_inverse": 0.904374
+ "lxp1_room_small1": 2.119979,
+ "lxp1_room_small2": 1.076288,
+ "lxp1_room_medium1": 2.584544,
+ "lxp1_room_medium2": 2.253389,
+ "lxp1_room_large1": 2.673344,
+ "lxp1_room_large2": 3.657531,
+ "lxp1_hall_b": 4.945151,
+ "lxp1_hall_d": 2.288573,
+ "lxp1_room_plate_b": 2.515153,
+ "lxp1_room_plate_d": 1.385669,
+ "lxp1_room_gate": 2.73736,
+ "lxp1_room_inverse": 3.304124
 }
