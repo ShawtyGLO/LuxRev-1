@@ -23,6 +23,14 @@
 //      reste sous 0,07 %. On cale donc 0,07 % a +15 dBV, ce qui rend l'etage plus
 //      propre partout en dessous.
 //
+// ⚠️ CORRECTION (2026-09-08), apres lecture du manuel de service du LXP-5. Celui-ci
+// separe « THD wet < 0,02 % » et « THD dry < 0,01 % » : le chiffre du manuel est
+// donc une THD du CHEMIN TRAITE ENTIER, pas de l'etage d'entree seul. Les 0,07 %
+// du LXP-1 sont de la meme famille. L'etage d'entree reel est donc PLUS PROPRE que
+// ce qu'on modelise ici. Consequence pratique nulle — 0,07 % est inaudible, et
+// DRIVE a zero reste la reference — mais le raisonnement etait faux et il fallait
+// le dire plutot que de laisser un commentaire qui affirme le contraire.
+//
 // ⚠️ A niveau normal cet etage est INAUDIBLE, et c'est correct. Le grain du
 // LXP-1 ne vient pas de son preampli, il vient de la quantification 16 bits et
 // de la pre-accentuation dans le tank. Un preampli qui « s'entend » serait une

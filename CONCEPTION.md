@@ -136,6 +136,56 @@ réelle de la machine.
 
 Sources et méthode de recherche : note `Où trouver les sources techniques` du vault.
 
+## 3bis. Ce que le manuel de service du LXP-5 a confirmé (2026-09-08)
+
+Manuel de service LXP-5, Lexicon réf. 070-07300, 69 pages avec description de circuit,
+spécifications, nomenclature et schémas. Trouvé sur `vintagesynthparts.com`, scan sans OCR —
+lu en rendant les planches en images, méthode notée dans `Où trouver les sources techniques`.
+
+⚠️ **Il ne corrige rien, il CONFIRME** — et c'est précieux : nos valeurs les plus
+structurantes venaient d'un seul manuel, celui du LXP-1. Une seconde machine de la même
+famille qui donne les mêmes chiffres les fait passer de « lu quelque part » à « constant de
+la gamme ».
+
+| Ce que le LXP-5 dit | Notre valeur | Verdict |
+|---|---|---|
+| « **31.25 kHz sample rate** », écrit en toutes lettres | 31 250 Hz | ✅ confirmé, et cette fois explicitement plutôt que déduit d'un quartz |
+| Quartz **16 MHz** sur le Lexichip, divisé en interne | 16 MHz | ✅ identique |
+| **16-bit linear PCM** | 16 bits | ✅ confirmé |
+| DAC **PCM54HP** (nomenclature, U51) | PCM54HP | ✅ **le même composant** |
+| ADC à approximations successives réutilisant le DAC + comparateur externe | idem | ✅ même architecture |
+| Mémoire audio : quatre 64K × 4 bits → **64K × 16 bits** | idem | ✅ identique |
+| **Plage dynamique 85 dB**, 20 Hz – 20 kHz | 85 dB | ✅ identique |
+
+### ✅ Ce qu'il apporte de neuf
+
+**Un seul convertisseur, partagé en trois temps.** Le diagramme *A/D SAR Conversion Timing*
+montre l'ordre exact d'une période d'échantillonnage : **conversion A/N, puis voie DROITE,
+puis voie GAUCHE**. Les deux sorties ne sont donc pas converties au même instant — il y a un
+décalage d'un tiers de période environ entre L et R, soit ~10 µs. C'est petit, mais c'est
+une source de décorrélation *native* que ni le LXP-1 ni notre moteur ne modélisent.
+
+**La bande passante en wet est spécifiée** : `20 Hz – 15 kHz, +1,0 / −1,5 dB` (le sec allant
+à 20 kHz ±0,1 dB). Cela confirme du côté conception ce que les filtres 15 kHz laissaient
+supposer, et cela n'entre pas en conflit avec notre mur à 17 kHz : la spec ne dit rien de ce
+qui se passe **au-dessus** de 15 kHz, et c'est justement là que nos mesures d'IR placent la
+falaise.
+
+### ⚠️ Et une lecture à corriger de mon côté
+
+Le LXP-5 sépare **THD wet < 0,02 %** et **THD dry < 0,01 %**. Le manuel du LXP-1 ne donne
+qu'un chiffre, `< 0,07 %`, et il est de la même famille : c'est une THD **du chemin traité
+entier**, pas de l'étage d'entrée seul.
+
+J'ai calibré `preampli.py` en attribuant ces 0,07 % au seul étage d'entrée. **L'étage réel
+est donc plus propre que ça.** Conséquence pratique nulle — 0,07 % est inaudible, et DRIVE à
+zéro reste la référence — mais le raisonnement écrit dans le code était faux et il est
+corrigé.
+
+⛔ **Le manuel de service du LXP-15 n'a pas été trouvé** : ni sur vintagesynthparts, ni sur
+synthxl, ni via manualslib. Seul son manuel utilisateur est accessible, et il ne donne pas
+d'architecture.
+
 ## 4. Architecture du moteur
 
 Topologie de la lignée Griesinger/Dattorro, dimensionnée par les mesures ET par le manuel.
