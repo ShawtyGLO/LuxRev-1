@@ -90,4 +90,5 @@ if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
 Copy-Item $src $dst -Recurse -Force
 Write-Host '  LuxRev-1 deploye.' -ForegroundColor Green
 Write-Host '  RAPPEL : pluginval ne juge pas le son. Pour ca :' -ForegroundColor DarkYellow
-Write-Host '    python _proto/comparer_portage.py   (portage contre prototype)' -ForegroundColor DarkYellow
+Write-Host '    python _proto/etalon_portage.py     (portage contre LA MACHINE — le juge)
+    python _proto/comparer_portage.py   (portage contre prototype — indicatif)' -ForegroundColor DarkYellow

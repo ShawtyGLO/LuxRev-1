@@ -165,7 +165,13 @@ puis voie GAUCHE**. Les deux sorties ne sont donc pas converties au même instan
 décalage d'un tiers de période entre L et R, soit **10,7 µs** à 31,25 kHz.
 
 ✅ **Modélisé depuis le 2026-09-09, en dur et sans interrupteur** (décidé avec l'utilisateur :
-« il devrait y être comme signature et pas comme proposition »). La machine n'avait pas le
+« il devrait y être comme signature et pas comme proposition »).
+
+⚠️ **Avec un écart assumé : c'est la GAUCHE qui mène**, alors que le manuel donne l'ordre
+inverse (`kGaucheEnPremier`, décidé 2026-09-09). Le coût est nul à l'oreille — un écart de
+10,7 µs décorrèle identiquement dans les deux sens, et corrélation, somme mono et spectre
+sont indiscernables. Ce qui change, c'est ce qu'on peut *affirmer* : sur ce point précis le
+plugin ne reproduit plus la machine, il la reflète. La machine n'avait pas le
 choix, le plugin non plus. Implémenté comme un **décalage du bloqueur** et non comme un
 retard fractionnaire filtré : la gauche tient simplement l'échantillon précédent pendant le
 premier tiers de période, ce qui est exactement ce que fait un échantillonneur-bloqueur, et

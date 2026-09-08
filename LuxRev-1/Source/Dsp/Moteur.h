@@ -39,9 +39,9 @@ inline constexpr float kTailleMax = 3.2f;
 inline constexpr float kProfondeurMax = 26.0f;   // vers le cremeux
 inline constexpr float kPredelaiMaxMs = 246.0f;  // Program table du manuel
 inline constexpr float kFenetreDiffMaxMs = 400.0f;
-// Retard de la voie gauche sur la droite, en periodes d'echantillonnage interne.
-// Le convertisseur unique du LXP-5 sert l'entree, puis la droite, puis la gauche :
-// un tiers de periode, soit 10,7 us a 31,25 kHz. Manuel de service, diagramme
+// Ecart entre les deux bloqueurs, en periodes d'echantillonnage interne. Le
+// convertisseur unique du LXP-5 sert l'entree, puis une voie, puis l'autre : un
+// tiers de periode, soit 10,7 us a 31,25 kHz. Manuel de service, diagramme
 // « A/D SAR Conversion Timing ».
 // ⚠️ Redefinissable A LA COMPILATION seulement, et uniquement pour que les bancs de
 // tools/ puissent mesurer l'avant et l'apres. Ce n'est PAS un reglage : le plugin le
@@ -50,6 +50,19 @@ inline constexpr float kFenetreDiffMaxMs = 400.0f;
  #define LUXREV_TIERS_CONVERTISSEUR (1.0 / 3.0)
 #endif
 inline constexpr double kTiersConvertisseur = LUXREV_TIERS_CONVERTISSEUR;
+
+// ⚠️ QUELLE VOIE ARRIVE EN PREMIER — et ici on s'ecarte du document.
+//
+// Le manuel de service donne l'ordre : A/N, puis DROITE, puis GAUCHE. Sur la
+// machine c'est donc la droite qui arrive la premiere. Le projet a choisi
+// l'inverse (decide 2026-09-09) : c'est la GAUCHE qui mene.
+//
+// Ce que ca coute est nul a l'oreille et non nul sur le papier. Un ecart de
+// 10,7 us decorrele exactement pareil dans les deux sens — aucune mesure ne
+// les distingue, corrolation, somme mono et spectre sont identiques. Ce qui
+// change, c'est ce qu'on peut AFFIRMER : sur ce point precis le plugin ne
+// reproduit plus la machine, il la reflete. Repasser a false suffit a revenir.
+inline constexpr bool kGaucheEnPremier = true;
 
 //==============================================================================
 /** Tous les parametres du moteur. Miroir des arguments de Moteur.__init__.
@@ -538,17 +551,24 @@ public:
             // largeur qu'on entend. On la modelise donc en dur.
             //
             // Modelise comme un DECALAGE DU BLOQUEUR, pas comme un retard
-            // fractionnaire filtre : la gauche tient simplement l'echantillon
-            // precedent pendant le premier tiers de periode. C'est exactement
-            // ce que fait l'echantillonneur-bloqueur, et ca ne coute rien.
-            long long kL = (long long) std::floor (posSortie - kTiersConvertisseur);
+            // fractionnaire filtre : la voie en retard tient simplement
+            // l'echantillon precedent pendant le premier tiers de periode.
+            // C'est exactement ce que fait l'echantillonneur-bloqueur, et ca ne
+            // coute rien.
+            //
+            // ⚠️ kGaucheEnPremier inverse les roles par rapport au manuel : voir
+            // la declaration de la constante.
+            long long kTard = (long long) std::floor (posSortie - kTiersConvertisseur);
 
-            k  = std::clamp (k,  0LL, ecritsInterne - 1);
-            kL = std::clamp (kL, 0LL, ecritsInterne - 1);
+            k     = std::clamp (k,     0LL, ecritsInterne - 1);
+            kTard = std::clamp (kTard, 0LL, ecritsInterne - 1);
             posSortie += pas;
 
-            float L = murL.traiter (sincL.traiter (anneauL[(size_t) (kL & kMasque)]));
-            float R = murR.traiter (sincR.traiter (anneauR[(size_t) (k  & kMasque)]));
+            const long long iL = kGaucheEnPremier ? k : kTard;
+            const long long iR = kGaucheEnPremier ? kTard : k;
+
+            float L = murL.traiter (sincL.traiter (anneauL[(size_t) (iL & kMasque)]));
+            float R = murR.traiter (sincR.traiter (anneauR[(size_t) (iR & kMasque)]));
 
             if (std::abs (reg.stereo - 1.0f) > 1e-3f)
             {
