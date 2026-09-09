@@ -134,6 +134,51 @@ def ecart(obtenu, cible):
     return obtenu / cible - 1.0
 
 
+# --- Note globale, pour arbitrer entre des reglages qui se disputent les memes mesures.
+#
+# ⚠️ POURQUOI ELLE EXISTE. L'accordage se fait par phases successives, chacune reglant SA
+# grandeur : la derniere gagne donc toujours. Mesure du 2026-09-09 — corriger le filtre
+# d'amortissement a fait tomber le rapport HF pile sur sa cible (+/- 0,03 sur dix
+# programmes) mais a emporte la rugosite de hall_b de +49 % a +70 % et celle de large2 de
+# -13 % a +22 %. Aucune phase ne pouvait voir cet echange, puisque aucune ne compare deux
+# ETATS COMPLETS.
+#
+# L'idee vient de accorder_v2.py, la branche exploratoire. Elle y etait juste, et son
+# objectif y etait faux : il comparait le T60 obtenu au T60 MESURE sur l'IR alors que
+# l'accordage vise le RT60 nominal du manuel — deux nombres differents, donc une descente
+# qui defaisait ce que les phases venaient de poser. Ici l'objectif compare a ce qui est
+# reellement vise, et le T60 sort de la note sur les programmes a enveloppe imposee, ou il
+# ne decrit pas le tank.
+#
+# Chaque terme est sans dimension : ecart relatif en log pour les grandeurs
+# multiplicatives, dB pour le spectre. Les poids disent ce qui compte, les tolerances a
+# partir de quand ca compte.
+POIDS = {"t60": 5.0, "spectre": 3.0, "rugosite": 2.5, "amort_hf": 2.0,
+         "enveloppe": 1.0, "melange": 0.5}
+TOLERANCE = {"t60": 0.04, "spectre": 1.5, "rugosite": 0.15, "amort_hf": 0.12,
+             "enveloppe": 6.0, "melange": 0.30}
+
+
+def note_globale(obt, cible, t60_vise, err_env=None):
+    """Une seule note pour deux etats complets. Plus bas vaut mieux."""
+    n = 0.0
+    e = obt.get("ecart_hf_db")
+    if e is not None:
+        n += POIDS["spectre"] * (abs(e) / TOLERANCE["spectre"]) ** 2
+    couples = [("rugosite_spectrale_db", cible.get("rugosite_spectrale_db"), "rugosite"),
+               ("amortissement_hf", cible.get("amortissement_hf"), "amort_hf"),
+               ("temps_melange_ms", cible.get("temps_melange_ms"), "melange")]
+    if t60_vise:                              # None sur gate et inverse
+        couples.append(("t60_s", t60_vise, "t60"))
+    for cle, but, poids in couples:
+        a = obt.get(cle)
+        if a and but and a > 0 and but > 0:
+            n += POIDS[poids] * (np.log(a / but) / TOLERANCE[poids]) ** 2
+    if err_env is not None and np.isfinite(err_env):
+        n += POIDS["enveloppe"] * (err_env / TOLERANCE["enveloppe"]) ** 2
+    return n
+
+
 # Cles rangees dans le dictionnaire d'accordage mais qui ne sont PAS des arguments du
 # moteur : ce sont des resultats de mesure, exportes tels quels vers Programmes.h.
 # ⚠️ Sans ce filtre, tout rendu posterieur a la phase de compensation COLOR plante sur
@@ -464,6 +509,49 @@ def accorder(cible, iterations=3, verbeux=True):
         if e is not None and abs(e) > 0.3:
             p["lp_sortie_hz"] = float(np.clip(p["lp_sortie_hz"] * 10.0 ** (-e / 9.0),
                                               1000.0, 22000.0))
+    # --- Descente par coordonnees sur la NOTE GLOBALE.
+    #
+    # Tout ce qui precede regle une grandeur a la fois. Ici, chaque essai est juge sur la
+    # meme note, donc un reglage n'est retenu que s'il ameliore l'ENSEMBLE : c'est le seul
+    # moyen d'arbitrer entre l'amortissement et la rugosite, qui se disputent la longueur
+    # des lignes et le filtre de boucle.
+    #
+    # Placee en dernier, avant la seule calibration de COLOR : elle part d'un etat deja bon
+    # et ne fait que negocier les derniers echanges. Deux passes, pas trois — la troisieme
+    # ne bougeait plus rien pour un tiers de temps de calcul en plus.
+    axes = [("taille", 1.22, 0.06, 3.2), ("t60_s", 1.10, 0.05, 12.0),
+            ("mixage", 1.35, 0.03, 1.0), ("ratio_hf", 1.15, 0.1, 1.6),
+            ("lp_sortie_hz", 1.30, 1000.0, 22000.0)]
+    t60_vise = None if impose else t60_cible
+    avec_env = bool(cible.get("enveloppe_db")) and not impose
+
+    def juger():
+        o = rendre_et_mesurer()
+        return note_globale(o, cible, t60_vise,
+                            erreur_enveloppe() if avec_env else None), o
+
+    meilleure, obt = juger()
+    depart = meilleure
+    for passe in range(2):
+        # ⚠️ `facteur` et non `pas` : `pas` est deja le pas d'enveloppe, lu par fermeture
+        # dans erreur_enveloppe(). Le masquer y remplace un entier par un flottant de
+        # cette table, et le decoupage de la reponse impulsionnelle explose.
+        for cle, facteur, lo, hi in axes:
+            base = p[cle]
+            for f in (1.0 / facteur, facteur):
+                v = float(np.clip(base * f, lo, hi))
+                if abs(v - base) < 1e-9:
+                    continue
+                p[cle] = v
+                n, o = juger()
+                if n < meilleure - 1e-6:
+                    meilleure, obt, base = n, o, v
+                else:
+                    p[cle] = base
+        trace(f"note{passe}", obt)
+    if verbeux:
+        print(f"    note     {depart:.1f} -> {meilleure:.1f}")
+
     # --- Calibration de la compensation de duree pour la macro COLOR.
     # Cinq rendus, une seule fois : on mesure de combien le T60 flechit a chaque position
     # et on stocke le facteur correctif. Le bouton devient alors neutre en duree.
