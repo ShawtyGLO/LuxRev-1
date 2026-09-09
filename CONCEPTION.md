@@ -252,6 +252,25 @@ avant de changer quoi que ce soit — mais c'est une piste architecturale docume
 ✅ **`taille` a enfin une unité.** *« Size is shown in meters. The smallest value approximates
 one side of a room. Cube this value to get the approximate room volume. »*
 
+⚠️ **Et la conversion révèle un défaut.** En lisant `L = c · t` sur la longueur moyenne des
+lignes, neuf de nos dix programmes à queue exponentielle tombent dans la plage documentée
+8–53,5 m, et `small2` atterrit à 8,5 m — sur le minimum de la machine. Mais **l'ordre ne suit
+pas les noms** :
+
+| | mètres | | mètres |
+|---|--:|---|--:|
+| `small2` | 8,5 | `plate_b` | 34,7 |
+| `small1` | **25,2** | `large1` | 39,8 |
+| `medium1` | 31,0 | `medium2` | **41,0** |
+| `hall_d` | **33,0** | `large2` | 46,8 |
+| | | `hall_b` | 67,5 (hors plage) |
+
+`small1` fait trois fois `small2`. `hall_d` est plus petit que `large2`. La cause est
+identifiée : **`taille` est accordée sur la rugosité spectrale**, pas sur une dimension. Elle
+porte donc deux métiers à la fois — la taille de salle et le caractère métallique — alors que
+le LXP-5 les sépare en deux commandes, `Size` et `Diffusion`. Si on calibrait un jour `taille`
+en mètres, il faudrait rendre le caractère à `diffusion`.
+
 ### La recette de la réverbe infinie, écrite noir sur blanc
 
 > Decay Time: **Infinite** · Treble Decay: **Full bandwidth** · Bass Multiply: **×1.0** ·
