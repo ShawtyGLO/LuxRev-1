@@ -136,8 +136,28 @@ private:
     ApparenceBouton  apparence { pal };
     ApparenceCellule apparenceCellule { pal };
 
+    /** Les familles de programmes, et combien chacune en contient aujourd'hui.
+
+        ⚠️ LA GRILLE NE CHANGE JAMAIS DE FORME. Douze cellules, toujours, quelle
+        que soit la famille choisie et quel que soit le nombre de programmes
+        qu'elle contient. Celles qui n'ont rien restent grises et VISIBLES.
+        C'est ce que fait une remote de rack : rien ne bouge physiquement, les
+        boutons se remplissent ou non.
+
+        Precedent dans la famille meme : le LXP-5 a un bouton FUNCTION a quatre
+        positions (PITCH, DELAY, CHORUS, MULTI) et un bouton SELECT a seize —
+        soit exactement ce decoupage a deux niveaux, avec une grille de taille
+        fixe. Manuel utilisateur, page 2-4.
+    */
+    struct Famille { const char* nom; int premier, nombre; };
+    static constexpr int kNFamilles = 3;
+    static constexpr int kCellules  = 12;
+
     Ecran ecran;
-    juce::OwnedArray<juce::TextButton> cellules;      // la grille des 12 programmes
+    juce::OwnedArray<juce::TextButton> familles;      // REVERB / DELAY / FX
+    juce::OwnedArray<juce::TextButton> cellules;      // les douze emplacements
+    int familleActive = 0;
+    void poserFamille (int i);
     juce::Slider sEntree, sDecay, sPredelai, sColor, sStereo, sTilt, sMix;
     juce::Label  lEntree, lDecay, lPredelai, lColor, lStereo, lTilt, lMix;
     juce::Label  lecture;                             // le parametre en cours de reglage

@@ -119,6 +119,19 @@ void ApparenceCellule::drawButtonBackground (juce::Graphics& g, juce::Button& b,
     const auto r = b.getLocalBounds().toFloat().reduced (0.5f);
     const bool choisi = b.getToggleState();
 
+    // ⚠️ UNE CELLULE VIDE RESTE VISIBLE. Elle n'est ni effacee ni retiree : la
+    // grille garde sa forme quelle que soit la famille, comme les boutons d'une
+    // remote qui existent physiquement meme quand rien ne leur est assigne. Un
+    // gris neutre, sans la lueur bleue qui signale une cellule active.
+    if (! b.isEnabled())
+    {
+        g.setColour (pal.serigraphie2.withAlpha (0.07f));
+        g.fillRoundedRectangle (r, 2.0f);
+        g.setColour (pal.serigraphie2.withAlpha (0.13f));
+        g.drawRoundedRectangle (r, 2.0f, 1.0f);
+        return;
+    }
+
     g.setColour (pal.lueur.withAlpha (choisi ? 0.22f : (survol ? 0.16f : 0.10f)));
     g.fillRoundedRectangle (r, 2.0f);
     if (choisi)
@@ -161,16 +174,18 @@ void Ecran::paint (juce::Graphics& g)
 
     // A l'arret, seuls la diode et l'ecran se grisent : le panneau reste, comme
     // une machine eteinte dont la face avant est toujours la.
-    if (! allume)
-    {
-        // ⚠️ Pas de texte. Un ecran eteint ne dit pas qu'il est eteint — il est
-        // simplement eteint. Le mot ARRET faisait plus penser a un message
-        // d'erreur qu'a une machine hors tension, et la diode grisee suffit a le
-        // dire.
-        g.setColour (juce::Colours::black.withAlpha (0.55f));
-        g.fillRoundedRectangle (zone, 4.0f);
-        return;
-    }
+    // ⚠️ A L'ARRET ON GRISE, ON N'EFFACE PAS.
+    //
+    // Deux versions ecartees avant celle-ci : le mot ARRET, qui ressemblait a un
+    // message d'erreur plutot qu'a une machine hors tension, puis un ecran noir,
+    // qui donnait l'impression que le plugin avait plante. Une remote hardware
+    // ne fait ni l'un ni l'autre — le retro-eclairage tombe, et on lit encore la
+    // serigraphie et les traces derriere. Le contenu reste donc DESSINE, et un
+    // voile pose par-dessus enleve la lueur.
+    //
+    // ⚠️ Techniquement, PAS setOpacity : en JUCE le premier setColour la remet a
+    // celle de la couleur posee, donc elle ne survit pas a la ligne suivante. On
+    // dessine tout normalement et on pose un voile a la FIN de la methode.
 
     auto inner = zone.reduced (12.0f, 11.0f);
 
@@ -207,6 +222,17 @@ void Ecran::paint (juce::Graphics& g)
     const float moitie = bas.getWidth() * 0.5f;
     dessinerCercles (g, bas.removeFromLeft (moitie).reduced (2.0f, 0.0f));
     dessinerSpectre (g, bas.reduced (2.0f, 0.0f));
+
+    // Le voile de l'arret. Pose sur un contenu entierement dessine, il eteint la
+    // lueur sans effacer l'information — on lit encore la courbe et le nom du
+    // programme derriere, comme sur une machine dont le retro-eclairage est
+    // tombe. Teinte du verre plutot que noir : un ecran eteint garde sa couleur
+    // de dalle.
+    if (! allume)
+    {
+        g.setColour (pal.verre.withAlpha (0.72f));
+        g.fillRoundedRectangle (zone, 4.0f);
+    }
 }
 
 void Ecran::dessinerCourbe (juce::Graphics& g, juce::Rectangle<float> z)
@@ -411,15 +437,29 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
     setLookAndFeel (&apparence);
     addAndMakeVisible (ecran);
 
-    auto* choix = dynamic_cast<juce::AudioParameterChoice*> (proc.etat.getParameter ("programme"));
-    for (int i = 0; i < kNombreProgrammes; ++i)
+    // Les familles. `nombre` est ce qu'elles contiennent AUJOURD'HUI ; ajouter un
+    // programme de delay se fera en changeant ce chiffre et rien d'autre.
+    static const Famille kFamilles[kNFamilles] = {
+        { "REVERB", 0, kNombreProgrammes }, { "DELAY", 0, 0 }, { "FX", 0, 0 } };
+
+    for (int f = 0; f < kNFamilles; ++f)
     {
-        auto* b = cellules.add (new juce::TextButton (juce::String (kProgrammes[i].nom).toUpperCase()));
+        auto* b = familles.add (new juce::TextButton (kFamilles[f].nom));
+        b->setLookAndFeel (&apparenceCellule);
+        b->setClickingTogglesState (false);
+        b->onClick = [this, f] { poserFamille (f); };
+        addAndMakeVisible (b);
+    }
+
+    auto* choix = dynamic_cast<juce::AudioParameterChoice*> (proc.etat.getParameter ("programme"));
+    for (int i = 0; i < kCellules; ++i)
+    {
+        auto* b = cellules.add (new juce::TextButton());
         b->setLookAndFeel (&apparenceCellule);
         b->setClickingTogglesState (false);
         b->onClick = [this, i, choix]
         {
-            if (choix == nullptr) return;
+            if (choix == nullptr || i >= kNombreProgrammes) return;
             choix->beginChangeGesture();
             *choix = i;
             choix->endChangeGesture();
@@ -433,6 +473,7 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
         };
         addAndMakeVisible (b);
     }
+    poserFamille (0);
 
     // ⚠️ Les trois commandes qui vont au-dela de la machine ont un CENTRE : leur
     // arc part de la position neutre, qui redonne exactement le LXP-1 mesure.
@@ -459,6 +500,7 @@ LuxRevEditor::LuxRevEditor (LuxRevProcessor& p)
 LuxRevEditor::~LuxRevEditor()
 {
     for (auto* b : cellules) b->setLookAndFeel (nullptr);
+    for (auto* b : familles) b->setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
 
@@ -509,7 +551,8 @@ void LuxRevEditor::timerCallback()
                                  (int) proc.etat.getRawParameterValue ("programme")->load());
 
     for (int i = 0; i < cellules.size(); ++i)
-        cellules[i]->setToggleState (i == ip, juce::dontSendNotification);
+        cellules[i]->setToggleState (familleActive == 0 && i == ip,
+                                     juce::dontSendNotification);
 
     const float decay = proc.etat.getRawParameterValue ("decay")->load();
     const float pre   = proc.etat.getRawParameterValue ("predelai")->load();
@@ -593,6 +636,28 @@ void LuxRevEditor::paint (juce::Graphics& g)
     g.fillRoundedRectangle (bande, 2.0f);
 }
 
+void LuxRevEditor::poserFamille (int f)
+{
+    familleActive = juce::jlimit (0, kNFamilles - 1, f);
+    for (int i = 0; i < familles.size(); ++i)
+        familles[i]->setToggleState (i == familleActive, juce::dontSendNotification);
+
+    // ⚠️ Seule la famille REVERB a des programmes aujourd'hui. Les deux autres
+    // affichent douze cellules VIDES — grises, visibles, inertes. On ne cache
+    // rien et on ne redimensionne rien : c'est le point de la maquette, la
+    // facade ne bouge pas quand on change de famille.
+    const int n = (familleActive == 0) ? kNombreProgrammes : 0;
+    for (int i = 0; i < cellules.size(); ++i)
+    {
+        const bool plein = i < n;
+        cellules[i]->setButtonText (plein ? juce::String (kProgrammes[i].nom).toUpperCase()
+                                          : juce::String());
+        cellules[i]->setEnabled (plein);
+        if (! plein) cellules[i]->setToggleState (false, juce::dontSendNotification);
+    }
+    repaint();
+}
+
 void LuxRevEditor::resized()
 {
     auto zone = getLocalBounds().reduced (8).reduced (18, 0);
@@ -607,6 +672,18 @@ void LuxRevEditor::resized()
     zone.removeFromTop (12);
 
     auto grille = zone.removeFromTop (96);
+
+    // La colonne des familles, a GAUCHE de la grille plutot qu'au-dessus : la
+    // facade ne grandit pas, et c'est la disposition du LXP-5, dont le bouton
+    // FUNCTION est a cote du bouton SELECT et non au-dessus.
+    {
+        auto col = grille.removeFromLeft (78);
+        const int hf = col.getHeight() / kNFamilles;
+        for (int i = 0; i < familles.size(); ++i)
+            familles[i]->setBounds (col.getX(), col.getY() + i * hf, col.getWidth() - 8, hf - 5);
+        grille.removeFromLeft (4);
+    }
+
     constexpr int cols = 4, rows = 3;
     const int lc = grille.getWidth() / cols, lh = grille.getHeight() / rows;
     for (int i = 0; i < cellules.size(); ++i)
