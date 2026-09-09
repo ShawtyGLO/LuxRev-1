@@ -98,6 +98,21 @@ int main (int argc, char** argv)
     // 0 = etage d'enveloppe coupe (pour mesurer le tank seul).
     const bool porte = (argc > 9) ? std::atoi (argv[9]) != 0 : true;
 
+    // VITESSE de la modulation, en Hz. Distincte de `mod`, qui en regle la
+    // PROFONDEUR. Elle pilote la constante de temps de la marche aleatoire par
+    // ligne : tau = fs / (modHz . 6). A 0,7 Hz — notre valeur — tau vaut 0,24 s.
+    //
+    // ⚠️ Le manuel utilisateur du LXP-5 donne « LFO Rate: 0.066-5 Hz ». Notre
+    // valeur est dans la plage, mais le MINIMUM de la machine est dix fois plus
+    // lent que ce qu'on utilise. C'est ce qu'il s'agit d'ecouter.
+    //
+    // ⚠️ Et non, ce n'est PAS le « 30 second randomizing process » du meme
+    // manuel : une constante de 30 s ne bouge pas pendant une queue de 2 s, elle
+    // se reduit a un decalage fige par ligne et ne brasse donc plus rien. Ce
+    // processus-la n'a de sens que sur la reverbe INFINIE, ou le manuel le cite,
+    // et ou les modes stationnaires ont le temps de s'installer.
+    const float modHz = (argc > 10) ? (float) std::atof (argv[10]) : -1.0f;
+
     const int n = (int) (kFs * duree);
     std::vector<float> x ((size_t) n, 0.0f), g ((size_t) n), d ((size_t) n);
 
@@ -113,6 +128,7 @@ int main (int argc, char** argv)
         Reglages r = reglagesDe (p);
         r = macroColor (r, color, p);
         r.modProfondeur *= mod;
+        if (modHz > 0.0f) r.modHz = modHz;
         r.bits = bits;
         m.contournerTank = (chaine != 0);
         m.porteActive = porte;

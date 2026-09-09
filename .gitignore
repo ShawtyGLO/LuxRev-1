@@ -17,3 +17,9 @@ Impulse Responce LXP-1/
 
 __pycache__/
 *.pyc
+
+# Rendus de comparaison de la modulation : regenerables par banc_moteur.exe,
+# et lourds. Recette dans le commit « L'essai des 30 secondes ».
+_proto/rendus_moteur/MODULATION/
+_proto/rendus_moteur/MODULATION_C0/
+_proto/rendus_moteur/ECOUTE_MODULATION/
