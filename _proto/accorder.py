@@ -511,6 +511,17 @@ def accorder(cible, iterations=3, verbeux=True):
                                               1000.0, 22000.0))
     # --- Descente par coordonnees sur la NOTE GLOBALE.
     #
+    # ⚠️ ELLE PERIME LE VOICING DE LA PHASE 5, et c'est mesure : le prototype passe de
+    # 0,77 a 1,02 dB contre la machine apres cette descente, alors que le PORTAGE reste
+    # a 0,54 dB. La difference tient a l'ordre — la descente deplace `taille` et
+    # `lp_sortie`, donc le spectre sous le FIR ajuste avant elle, et seul le portage
+    # refait le sien ensuite (voicing_portage.py, lance apres l'accordage).
+    #
+    # Consequence pratique nulle pour le plugin, qui est ce qui est livre. Reelle pour
+    # le prototype, qui sert de reference d'ecoute. Le remede propre serait de relancer
+    # la phase 5 apres la descente ; il coute une campagne entiere et n'a pas ete fait.
+    # NE PAS lire l'ecart du prototype comme une regression du moteur.
+    #
     # Tout ce qui precede regle une grandeur a la fois. Ici, chaque essai est juge sur la
     # meme note, donc un reglage n'est retenu que s'il ameliore l'ENSEMBLE : c'est le seul
     # moyen d'arbitrer entre l'amortissement et la rugosite, qui se disputent la longueur
