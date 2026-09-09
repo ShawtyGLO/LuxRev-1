@@ -44,7 +44,17 @@ SUPPLEMENT = (1187, 1409, 1607, 1873, 2113, 2417, 2789, 3121)
 BASE = moteur.FDN_LONGUEURS
 
 
-def rendre(nl, params):
+# ⚠️ HUIT PHASES D'IMPULSION, pas une.
+#
+# Le bloqueur d'ordre zero rend la reponse impulsionnelle dependante de la phase de
+# l'impulsion — jusqu'a 10 dB, etabli le 2026-09-06 et corrige partout ailleurs. Une
+# seule impulsion ne peut pas trancher un ecart de rugosite de 0,17 dB : c'est ce qui
+# faisait dire a la premiere passe que hall_b s'aggravait avec 16 lignes pendant que
+# plate_b et small1 s'ameliorent. On moyenne, comme etalon_prototype.py.
+DECALAGES = (200, 201, 202, 203, 204, 205, 206, 207)
+
+
+def rendre(nl, params, decalage):
     moteur.FDN_LONGUEURS = (BASE + SUPPLEMENT)[:nl]
     moteur.N_FDN = nl
     q = dict(params)
@@ -53,7 +63,7 @@ def rendre(nl, params):
     q["bits"] = 0
     q["correction_fir"] = np.array(q["correction_fir"])
     m = moteur.Moteur(fs=moteur.FS, **q)
-    x = np.zeros(int(moteur.FS * 3.0)); x[200] = 1.0
+    x = np.zeros(int(moteur.FS * 3.0)); x[decalage] = 1.0
     return m.rendre(x)
 
 
@@ -64,17 +74,25 @@ def main():
                 if k not in ("compensation_color", "compensation_lp")}
         q = moteur.macro_color(base, 0.0)          # cote cremeux
         print("\n  %s   (COLOR a 0 %%, le cote cremeux)" % nom)
-        print("    lignes   melange   dens 50ms  dens 100ms   rugosite")
+        print("    lignes   melange   dens 50ms  dens 100ms   rugosite  (ecart-type)")
         for nl in (8, 12, 16):
-            L, _ = rendre(nl, q)
-            tt, d, _ = densite_echos(L, moteur.FS)
-            tt = np.asarray(tt, dtype=float)
-            d = np.asarray(d, dtype=float)
-            lire = lambda ms: float(d[int(np.argmin(np.abs(tt - ms)))])
-            tm = temps_melange(tt, d)
-            rug = rugosite_spectrale(L, moteur.FS)
-            print("    %6d  %6.0f ms   %9.2f  %10.2f  %9.2f"
-                  % (nl, tm, lire(50.0), lire(100.0), rug))
+            tms, d50, d100, rugs = [], [], [], []
+            for dec in DECALAGES:
+                L, _ = rendre(nl, q, dec)
+                tt, d, _ = densite_echos(L, moteur.FS)
+                tt = np.asarray(tt, dtype=float)
+                d = np.asarray(d, dtype=float)
+                lire = lambda ms: float(d[int(np.argmin(np.abs(tt - ms)))])
+                tm = temps_melange(tt, d)
+                if np.isfinite(tm):
+                    tms.append(tm)
+                d50.append(lire(50.0)); d100.append(lire(100.0))
+                rugs.append(rugosite_spectrale(L, moteur.FS))
+            # ⚠️ L'ecart-type est affiche EXPRES : sans lui on ne sait pas si un ecart
+            # entre deux nombres de lignes depasse la dispersion de la mesure elle-meme.
+            print("    %6d  %6.0f ms   %9.2f  %10.2f  %9.2f  (+/- %.2f)"
+                  % (nl, np.mean(tms) if tms else float("nan"),
+                     np.mean(d50), np.mean(d100), np.mean(rugs), np.std(rugs)))
     moteur.FDN_LONGUEURS = BASE
     moteur.N_FDN = len(BASE)
 
