@@ -212,6 +212,85 @@ corrigé.
 synthxl, ni via manualslib. Seul son manuel utilisateur est accessible, et il ne donne pas
 d'architecture.
 
+## 3ter. Le manuel UTILISATEUR du LXP-5 (2026-09-09)
+
+Trouvé par l'utilisateur sur `github.com/evenbrenden/lxpx`, PDF avec texte extractible,
+69 pages, Lexicon réf. 070-07332 Rev 1. ⚠️ Le dépôt contient aussi du code sous **GPL v3** —
+patches Pure Data, `parameter_definitions.py`. **On n'y touche pas et on n'en lit pas le
+code** : ce serait contaminant. Seuls les manuels sont utilisés, comme les manuels de service.
+
+### Deux algorithmes, et le second est le nôtre
+
+```
+Pitch/Delay    entrée → Delay 1 → Pitch Shifter → EQ → Delay 2 → Ambience → Rvb Balance
+                        ↑ Feedback 1              ↘ Delay 3 ↑ Feedback 2
+
+Delay/Reverb   entrée → Delay 1 (Modulation) → EQ → Delay 2 (Pre-Delay) → Diffusor
+                        ↑ Feedback 1                                     → Reverb → Rvb Balance
+```
+
+⚠️ **L'ordre diffère du nôtre.** Chez nous : Treble → Diffusion → Pré-délai, avec la
+contre-réaction autour des trois. Chez le LXP-5 : la contre-réaction n'entoure que **Delay 1**,
+et le **diffuseur est APRÈS le pré-délai**, juste avant le tank. À confronter à la mesure
+avant de changer quoi que ce soit — mais c'est une piste architecturale documentée.
+
+### Les paramètres du LXP-5 sont les nôtres, un pour un
+
+| LXP-5 (p. 2-13/2-14) | plage | chez nous |
+|---|---|---|
+| Decay Time | 0,5 s – **infini** (Delay/Reverb) | `t60_s` |
+| Treble Decay | 320 Hz – full range | `ratio_hf` |
+| Bass Multiply | ×0,3 – ×2,5 | `ratio_bass` |
+| **Size** | **8 – 53,5 m** (Delay/Reverb) | `taille` |
+| Diffusion | 0 – 100 % | `diffusion` |
+| High Cut | 320 Hz – full range | `lp_sortie` |
+| Low Cut | full range – 1350 Hz | filtre de grave |
+| LFO Rate | **0,066 – 5 Hz** | `mod_hz` |
+| Delay 1 + Feedback 1 | 0 – 692,3 ms, 0–100 % | `predelai` + `predelai_fb` |
+| Delay 2 | 0 – 326,4 ms | — |
+
+✅ **`taille` a enfin une unité.** *« Size is shown in meters. The smallest value approximates
+one side of a room. Cube this value to get the approximate room volume. »*
+
+### La recette de la réverbe infinie, écrite noir sur blanc
+
+> Decay Time: **Infinite** · Treble Decay: **Full bandwidth** · Bass Multiply: **×1.0** ·
+> Size: **Maximum**
+
+Et deux détails d'implémentation que rien d'autre ne donnait :
+
+- *« When incoming audio exceeds an internally fixed threshold level, it is **gated into the
+  reverberator**. While the gate is open, the Decay Time is set one step below infinite to
+  prevent cumulative overloading. »* — il y a donc bien un seuil interne fixe dans la machine,
+  pour ce cas précis et lui seul.
+- *« set Decay Time one step below MAX very briefly to restart a **30 second randomizing
+  process** »* — le tank a un processus de randomisation de **30 secondes**. Notre modulation
+  tourne à 0,7 Hz. À creuser.
+
+### Ce qui est atteignable sans pitch shifter
+
+- **MULTI 57–64**, algorithme Delay/Reverb, aucun pitch : *Slap Room, Echo Room, Dark Closet,
+  Small Bright, Medium Bright, Medium Dark, Large Bright, Huge Room*.
+- **DELAY, les 16** : *Echo Delay, Stereo Delay, Slap Echo, Mid Slap, Stereo Slap, Diffuse
+  Echo, Image Delay, Bounce Delay, Bounce Loop, Ambient Loop, Echo Loop, Filter Delay,
+  Robot 1, Robot 2, Short Delay, Long Delay*.
+- **CHORUS, ceux pilotés par le LFO seul** : *Comb Ambience, Resonant Sweep, Diffuse Sweep,
+  Slap Sweep, Slap Flange, Diffuse Flange*. Les « Detune » demandent le pitch.
+
+### Le pitch shifter, et pourquoi il est écarté
+
+⛔ **Décision de l'utilisateur : jamais** (2026-09-09).
+
+Le manuel en dit assez pour savoir comment il était fait : *« Selecting Bypass will remove the
+pitch shifter from the Pitch/Delay algorithm, and **eliminate its small processing delay** »*.
+Un décaleur qui ajoute un petit retard fixe est un **décaleur à ligne à retard** — deux
+pointeurs de lecture qui défilent à une vitesse différente, fondus l'un dans l'autre pour
+masquer le rebouclage. Pas un vocodeur de phase : la technique de 1988, et elle est courte à
+écrire.
+
+Base : Bypass / −2 oct / −1 oct / unisson. Interval : 0–15 demi-tons au-dessus de la base.
+Adjust : réglage fin d'environ ±1 demi-ton. Plage totale −2 oct à +1 oct.
+
 ## 4. Architecture du moteur
 
 Topologie de la lignée Griesinger/Dattorro, dimensionnée par les mesures ET par le manuel.
