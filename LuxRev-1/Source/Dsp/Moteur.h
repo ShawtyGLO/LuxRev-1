@@ -64,6 +64,28 @@ inline constexpr double kTiersConvertisseur = LUXREV_TIERS_CONVERTISSEUR;
 // reproduit plus la machine, il la reflete. Repasser a false suffit a revenir.
 inline constexpr bool kGaucheEnPremier = true;
 
+// ⚠️ QUANTIFICATION DANS LA BOUCLE — essai, desactive par defaut.
+//
+// La memoire audio du LXP-1 fait 64K x 16 bits (les deux manuels de service le
+// disent). Dans la machine, le contenu des lignes a retard EST donc quantifie a
+// chaque tour, pas seulement en entree et en sortie du tank. C'est ce que ce
+// drapeau ajoute : `e`, ce qui est ECRIT dans chaque ligne, passe par le
+// convertisseur.
+//
+// ⛔ ET LA MESURE NE PEUT PAS ARBITRER CONTRE LA MACHINE. Les 14 IR ont un
+// plancher a -137 dB avec des queues qui decroissent proprement jusqu'au bout :
+// la deconvolution du sweep a efface le bruit du LXP-1. Une machine 16 bits qui
+// annonce 85 dB ne peut pas produire 140 dB de plage. Les IR ne portent donc
+// AUCUNE information sur son grain.
+//
+// La decision se prend donc sur l'ecart AUDIBLE entre les deux versions, pas sur
+// la fidelite de procede : l'erreur recircule et s'amplifie par le gain de
+// boucle, ce qui releve le plancher des queues longues et peut creer des cycles
+// limites — pour un benefice qui reste a etablir.
+#ifndef LUXREV_QUANT_BOUCLE
+ #define LUXREV_QUANT_BOUCLE 0
+#endif
+
 //==============================================================================
 /** Tous les parametres du moteur. Miroir des arguments de Moteur.__init__.
 
@@ -668,7 +690,19 @@ private:
                                 * profondeur * 0.4 + profondeur * 0.5;
 
             const Ech inj = bInj[k] * injections[(size_t) k].pousser (v);
-            const Ech e = (sorties[k] - fMix) + inj;
+            Ech e = (sorties[k] - fMix) + inj;
+#if LUXREV_QUANT_BOUCLE
+            // `e` est ce qui est ECRIT dans la ligne, donc ce que la machine range
+            // dans ses 64K x 16 bits. Le calage passe par gainInterne, comme au
+            // DAC, sans quoi le grain varierait de 14 dB d'un programme a l'autre.
+            //
+            // ⚠️ Generateur de bruit SEPARE, et c'est necessaire a l'experience :
+            // le dither et la modulation puisent dans la meme source, donc
+            // partager le flux donnerait aux deux versions des trajectoires de LFO
+            // differentes, et on ne comparerait plus la seule chose qu'on veut
+            // comparer.
+            e = quantifier ((float) (e * gainInterne), reg.bits, bruitBoucle) / gainInterne;
+#endif
             const Ech d = lignes[(size_t) k].traiter (e, lfo);
 
             // h_i(Z) du brevet Jot : passe-bas du 1er ordre a gain continu g_dc et
@@ -861,6 +895,7 @@ private:
     bool nonLineaire = false;
 
     float gainInterne = 1.0f;
+    Bruit bruitBoucle { 20260927u };   // dither de la boucle, flux propre
     Preampli preampli;
 
     Bruit bruit { 20260907u };
