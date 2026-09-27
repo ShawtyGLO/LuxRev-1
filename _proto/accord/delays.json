@@ -1,0 +1,76 @@
+{
+  "lxp1_room_delay1": {
+    "fs_mesure": 48000.0,
+    "periode_ms": 285.75,
+    "confiance_autocorrelation": 0.404,
+    "ping_pong": false,
+    "separation_db": 1.5,
+    "premiere_repetition_ms": 313.69,
+    "pente_db_par_repetition": -7.73,
+    "r2_exponentielle": 0.999,
+    "contre_reaction_pente": 0.4106,
+    "contre_reaction_t60": 0.4305,
+    "t60_mesure_s": 2.342,
+    "niveaux_gauche_db": [
+      -1.9,
+      -9.6,
+      -17.8,
+      -24.7,
+      -34.1,
+      -41.8,
+      -46.6,
+      -55.0,
+      -62.7,
+      -68.4
+    ],
+    "niveaux_droite_db": [
+      0.0,
+      -7.8,
+      -16.6,
+      -23.9,
+      -31.7,
+      -38.5,
+      -46.7,
+      -55.1,
+      -63.9,
+      -70.4
+    ]
+  },
+  "lxp1_room_delay2": {
+    "fs_mesure": 48000.0,
+    "periode_ms": 99.75,
+    "confiance_autocorrelation": 0.574,
+    "ping_pong": true,
+    "separation_db": 18.0,
+    "premiere_repetition_ms": 107.02,
+    "pente_db_par_repetition": -6.3,
+    "r2_exponentielle": 0.77,
+    "contre_reaction_pente": 0.484,
+    "contre_reaction_t60": 0.7203,
+    "t60_mesure_s": 2.1,
+    "niveaux_gauche_db": [
+      -43.8,
+      -0.2,
+      -40.4,
+      0.0,
+      -42.0,
+      -32.4,
+      -47.7,
+      -33.4,
+      -53.7,
+      -57.1
+    ],
+    "niveaux_droite_db": [
+      -0.2,
+      -40.5,
+      -0.1,
+      -42.1,
+      -32.6,
+      -47.9,
+      -33.6,
+      -53.9,
+      -57.1,
+      -60.7
+    ]
+  }
+}
