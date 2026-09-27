@@ -310,6 +310,51 @@ masquer le rebouclage. Pas un vocodeur de phase : la technique de 1988, et elle 
 Base : Bypass / −2 oct / −1 oct / unisson. Interval : 0–15 demi-tons au-dessus de la base.
 Adjust : réglage fin d'environ ±1 demi-ton. Plage totale −2 oct à +1 oct.
 
+## 3quater. La structure des deux programmes Delay, relevee (2026-09-27)
+
+Reportes en v1 comme « un moteur d'une autre nature ». C'est vrai de leur SON, pas de leur
+implementation. Voici ce que leurs IR disent, a la resolution de l'echantillon.
+
+⚠️ **Deux fausses pistes avant celle-ci.** Le pre-delai mesure — 171 ms sur `delay1`, 207 ms
+sur `delay2` — n'est PAS la periode de repetition, et le prendre pour telle donnait des
+relevés incoherents. Puis une autocorrelation sur une enveloppe a pas de 2 ms a annonce une
+grille de 22 ms sur les deux : artefact du pas d'analyse. Les chiffres ci-dessous viennent
+d'une detection de cretes a l'echantillon, sur les quatre canaux.
+
+### `delay2` — un PING-PONG, et rien d'autre
+
+| t (ms) | canal fort | niveau | separation |
+|--:|---|--:|--:|
+| 107,5 | **droite** | −0,2 dB | 44 dB |
+| 207,1 | **gauche** | −0,2 dB | 41 dB |
+| 306,7 | **droite** | −0,1 dB | 41 dB |
+| 406,3 | **gauche** | 0,0 dB | 42 dB |
+| 622,4 | gauche | −13,8 dB | 36 dB |
+| 722,0 | droite | −13,6 dB | 36 dB |
+
+**Espacement 99,6 ms, canaux alternes, 36 a 44 dB de separation.** Les quatre premieres
+repetitions sont au meme niveau, puis un palier vers −13,8 dB, puis −26,7 dB. Aucune
+diffusion : densite finale 0,18, une seule crete detectee par `analyse_ir`.
+
+### `delay1` — centre, avec un amas de diffusion par repetition
+
+Repetitions toutes les **285,7 ms**, a 0 · −7,8 · −16,6 · −23,9 dB. ⚠️ Et **pas de
+ping-pong** : a 313,7 ms les quatre canaux tiennent dans 2,4 dB.
+
+Chaque repetition est un **amas de cinq prises** espacees d'environ 13,5 ms, de profil
+symetrique : −29 · −14 · **0** · −14,5 · −26,5 dB. C'est la diffusion, figee dans le motif.
+
+### Ce que ca implique
+
+Le moteur a deja tout ce qu'il faut — `predelaiFb` est cable dans les deux moteurs — mais
+**pas sous la bonne forme** :
+
+- le **banc de prises** place ses 192 prises a des positions PSEUDO-ALEATOIRES et decorrele
+  par alternance de signes. C'est voulu pour Gate et Inverse, ou un pas regulier sonnerait
+  comme une hauteur. Pour un delay il faut des positions EXACTES et un ping-pong explicite ;
+- la **ligne de pre-delai** est mono et vit dans la chaine d'entree, avant le decimateur.
+  Un ping-pong demande une paire croisee.
+
 ## 4. Architecture du moteur
 
 Topologie de la lignée Griesinger/Dattorro, dimensionnée par les mesures ET par le manuel.
