@@ -192,11 +192,29 @@ inline std::vector<float> correctionSinc (double fsHote, int nTaps = 127)
     ou une quantification seche tombe au zero numerique absolu et fait
     disparaitre la queue d'un coup au lieu de la laisser se fondre.
 */
+// ⚠️ Drapeau d'ESSAI, actif par defaut. A zero, le quantificateur tronque sans
+// dither — ce qui sert a repondre a une question precise : la quantification DANS
+// la boucle du FDN, si on l'active, suffit-elle a dithering le convertisseur de
+// sortie ? Autrement dit, peut-on remplacer un bruit ajoute a la main par un
+// bruit MODELISE, issu du meme mecanisme que dans la machine ?
+//
+// Le piege a verifier est net : l'erreur de quantification disparait quand le
+// signal disparait. Plus de signal, plus de dither, et la fin de queue se fait
+// tronquer — exactement ce que le dither devait empecher.
+#ifndef LUXREV_DITHER
+ #define LUXREV_DITHER 1
+#endif
+
 inline float quantifier (float x, int bits, Bruit& bruit) noexcept
 {
     if (bits <= 0) return x;
     const float q = (float) (1 << (bits - 1));
+#if LUXREV_DITHER
     const float d = bruit.uniforme() - bruit.uniforme();     // TPDF, 1 LSB c-a-c
+#else
+    const float d = 0.0f;
+    (void) bruit;
+#endif
     return std::round (x * q + d) / q;
 }
 
