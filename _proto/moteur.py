@@ -31,10 +31,29 @@ FS_INTERNE = 31250
 # en anti-image sur les sorties du DAC (manuel de service). Le mur mesure a 16,9 kHz sur
 # les IR est le -20 dB de ce filtre-la ; 15 kHz est la valeur de conception.
 #
-# ⚠️ « 15 kHz » nomme le bord de bande passante du module, pas son point a -3 dB : la
-# mesure sur les 14 IR place celui-ci vers 17 kHz. C'est cette valeur-la qu'il faut
-# implementer, sinon on coupe 8 dB d'air que la machine laisse passer.
-MUR_HZ_LXP = 17000.0
+# ⚠️ « 15 kHz » nomme le bord de bande passante du module, pas son point a -3 dB.
+#
+# ⚠️ 17 000 Hz A ETE CORRIGE A 16 000 LE 2026-09-28. Le chiffre de 17 kHz venait
+# d'une lecture du coude sur les IR, faussee par l'amortissement du tank qui fait
+# deja tomber le niveau bien avant le filtre. Le bon temoin est `delay2`, dont
+# l'amortissement vaut 0,999 et qui montre donc le filtre SEUL :
+#
+#     14 kHz  +1,0     16 kHz  -1,5     18 kHz  -10,2
+#     15 kHz  +0,4     17 kHz  -5,0     19 kHz  -19,9
+#
+# Plat jusqu'a 15 kHz puis effondrement — ce qui est attendu, le Nyquist INTERNE
+# etant a 15 625 Hz. Au-dessus il n'y a plus de signal, seulement les images du
+# bloqueur, et c'est le role du filtre de les retirer.
+#
+# Mesure de l'ecart du portage a la machine, moyenne sur cinq programmes :
+#
+#     10 kHz  -0,17    14 kHz  -0,06    17 kHz  -0,69
+#     12 kHz  +0,34    16 kHz  -0,68    18 kHz  +1,80   <- trop ouvert
+#
+# On suivait la machine a +/- 0,7 dB jusqu'a 17 kHz et on laissait passer 1,8 dB
+# de trop a 18 kHz, systematiquement, sur les cinq. C'est-a-dire du repliement et
+# du grain de quantification, la ou rien de musical ne peut se trouver.
+MUR_HZ_LXP = 16000.0
 # Frequence a laquelle `ratio_hf` est DEFINI. Ce n'est pas un choix libre : c'est la
 # bande haute de `analyse_ir.py`, donc celle ou la cible T60(8 kHz)/T60(500 Hz) est
 # relevee sur les IR. Le filtre absorbant doit atteindre son rapport ICI et nulle part

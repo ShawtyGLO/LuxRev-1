@@ -2,7 +2,7 @@
   "lxp1_hall_b": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 9211.379170626735,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 2.9634146341463414,
     "t60_s": 2.851982110068886,
     "diffusion": 0.75,
@@ -93,7 +93,7 @@
   "lxp1_hall_d": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 1872.3725257908743,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.447097240079043,
     "t60_s": 1.653944053850086,
     "diffusion": 0.75,
@@ -184,7 +184,7 @@
   "lxp1_room_gate": {
     "predelai_ms": 0.1,
     "lp_sortie_hz": 5675.405349174171,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.10727420568354,
     "t60_s": 1.2,
     "diffusion": 0.75,
@@ -267,7 +267,7 @@
   "lxp1_room_inverse": {
     "predelai_ms": 22.69,
     "lp_sortie_hz": 10732.865924401636,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 0.4190062864088101,
     "t60_s": 1.2,
     "diffusion": 0.75,
@@ -350,7 +350,7 @@
   "lxp1_room_large1": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 2933.909908692475,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.7441182885325417,
     "t60_s": 2.4948252524030954,
     "diffusion": 0.75,
@@ -441,7 +441,7 @@
   "lxp1_room_large2": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 8639.113850106136,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 2.0524800358606803,
     "t60_s": 2.6457048218846624,
     "diffusion": 0.75,
@@ -532,7 +532,7 @@
   "lxp1_room_medium1": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 3381.3466881969466,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.3596432141705905,
     "t60_s": 1.2973476809423985,
     "diffusion": 0.75,
@@ -623,7 +623,7 @@
   "lxp1_room_medium2": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 6248.092416001532,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.8,
     "t60_s": 1.8203075028609892,
     "diffusion": 0.75,
@@ -714,7 +714,7 @@
   "lxp1_room_plate_b": {
     "predelai_ms": 0.0,
     "lp_sortie_hz": 4849.088602019549,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.5236143081547289,
     "t60_s": 1.8854593413724121,
     "diffusion": 0.75,
@@ -805,7 +805,7 @@
   "lxp1_room_plate_d": {
     "predelai_ms": 33.0,
     "lp_sortie_hz": 2839.458315069682,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.8,
     "t60_s": 2.089890145052212,
     "diffusion": 0.75,
@@ -896,7 +896,7 @@
   "lxp1_room_small1": {
     "predelai_ms": 16.0,
     "lp_sortie_hz": 2463.9620494919254,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 1.10727420568354,
     "t60_s": 0.8389569584756775,
     "diffusion": 0.75,
@@ -987,7 +987,7 @@
   "lxp1_room_small2": {
     "predelai_ms": 16.0,
     "lp_sortie_hz": 7966.353038563287,
-    "mur_hz": 17000.0,
+    "mur_hz": 16000.0,
     "taille": 0.3724279851626672,
     "t60_s": 1.3249516443410603,
     "diffusion": 0.75,
