@@ -10,11 +10,20 @@
 // prise sortie du DAW.
 //
 // Usage :
-//   rendu_ecoute.exe <entree.wav> <sortie.wav> [programme] [mix] [color] [drive]
+//   rendu_ecoute.exe <entree.wav> <sortie.wav> [programme] [mix] [color] [drive] [diffusion]
 //     programme : indice 0-11, defaut 6
 //     mix       : 0-1, defaut 0,5
 //     color     : 0-1, defaut 0,5
 //     drive     : 0-1, defaut 0
+//     diffusion : 0-1, negatif = valeur du programme (defaut)
+//
+// ⚠️ `diffusion` est expose parce qu'il n'a JAMAIS ete accorde : les douze
+// programmes portent 0,75, la valeur d'initialisation de accorder.py. A 0,75 les
+// coefficients des quatre passe-tout valent 0,75 / 0,75 / 0,625 / 0,625 — les
+// valeurs canoniques de Dattorro, defendables — mais aucune n'a ete choisie
+// contre une mesure. Et la phase 2 de l'accordeur note elle-meme qu'« au-dela
+// d'environ 0,7, un coefficient d'allpass eleve fait trainer chaque impulsion au
+// lieu de la densifier ».
 //
 // Compilation (deux fois pour comparer la quantification en boucle) :
 //   cl /O2 /EHsc /std:c++17 /DLUXREV_QUANT_BOUCLE=0 tools\rendu_ecoute.cpp /Fe:tools\rendu_hors.exe
@@ -129,6 +138,7 @@ int main (int argc, char** argv)
     const float mix   = (argc > 4) ? (float) std::atof (argv[4]) : 0.5f;
     const float color = (argc > 5) ? (float) std::atof (argv[5]) : 0.5f;
     const float drive = (argc > 6) ? (float) std::atof (argv[6]) : 0.0f;
+    const float diff  = (argc > 7) ? (float) std::atof (argv[7]) : -1.0f;
 
     std::vector<float> x;
     double fs = 48000.0;
@@ -146,6 +156,7 @@ int main (int argc, char** argv)
     m.preparer (fs);
     Reglages r = macroColor (reglagesDe (p), color, p);
     r.drive = drive;
+    if (diff >= 0.0f) r.diffusion = diff;
     m.appliquer (r, &p);
     m.vider();
 
@@ -166,7 +177,7 @@ int main (int argc, char** argv)
     }
 
     ecrireWav (argv[2], g, d, fs);
-    std::printf ("  %-22s programme %-10s mix %.2f color %.2f  boucle %s\n",
-                 argv[2], p.nom, mix, color, LUXREV_QUANT_BOUCLE ? "OUI" : "non");
+    std::printf ("  %-34s programme %-10s mix %.2f color %.2f diffusion %.2f\n",
+                 argv[2], p.nom, mix, color, (double) r.diffusion);
     return 0;
 }
