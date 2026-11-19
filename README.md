@@ -1,12 +1,11 @@
 # LuxRev-1
 
-Réverbe algorithmique en C++ / JUCE, conçue à partir de mesures faites sur une réverbe matérielle de référence (Lexicon LXP-1).
+Réverbe algorithmique en C++ / JUCE, conçue à partir de mesures faites sur les réponses d'impulsion d’une réverbe matérielle de référence (Lexicon LXP-1).
 
 ## L'idée
 
 Les quatorze programmes de la machine sont **clonés sur cible mesurée**. Le comportement des
-réglages, lui, est **conçu** à partir de la littérature (Griesinger, Dattorro) : aucune mesure
-ne le contraint, et le projet ne prétend pas le contraire.
+réglages, lui, est **conçu** à partir de la littérature (Griesinger, Dattorro) : aucune mesure ne le contraint, et le projet ne prétend pas le contraire.
 
 ## La démarche de validation
 
